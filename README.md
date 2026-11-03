@@ -100,7 +100,7 @@ docker compose down -v
 
 ## Migraciones
 
-Alembic está configurado, pero todavía no hay tablas de negocio ni una revisión inicial. Las migraciones se aplican de forma explícita:
+Alembic contiene la revisión inicial `0001` que crea las nueve tablas del dominio con sus restricciones e índices. Las migraciones se aplican de forma explícita:
 
 ```bash
 docker compose exec backend alembic upgrade head
@@ -114,6 +114,23 @@ docker compose exec backend alembic revision --autogenerate -m "descripcion"
 ```
 
 No se ejecutan migraciones automáticamente al arrancar el backend.
+
+## Datos iniciales
+
+Después de aplicar las migraciones, la precarga de los 21 locales se ejecuta una sola vez:
+
+```bash
+cd backend
+python -m scripts.seed_stores
+```
+
+Con Docker:
+
+```bash
+docker compose exec backend python -m scripts.seed_stores
+```
+
+El script es idempotente: usa el número de local como clave natural y no inserta duplicados si se ejecuta más de una vez. Al finalizar imprime cuántos locales creó y cuántos ya existían.
 
 ## Pruebas
 
