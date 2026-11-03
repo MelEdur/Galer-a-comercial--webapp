@@ -74,9 +74,8 @@ class Store(TimestampMixin, Base):
         back_populates="store",
         passive_deletes=True,
     )
-    merchant: Mapped[User | None] = relationship(
+    merchants: Mapped[list[User]] = relationship(
         back_populates="store",
-        uselist=False,
     )
 
 

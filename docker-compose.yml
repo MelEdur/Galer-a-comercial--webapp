@@ -26,6 +26,12 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://galeria:change-me@db:5432/galeria}
       TEST_DATABASE_URL: ${TEST_DATABASE_URL:-postgresql+psycopg://galeria:change-me@db:5432/app_test}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required; copy .env.example to .env}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-60}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_FULL_NAME: ${ADMIN_FULL_NAME:-Administrador}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:

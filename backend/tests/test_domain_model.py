@@ -89,6 +89,7 @@ def test_merchant_requires_store(db_session) -> None:
     db_session.add(
         User(
             email="merchant@example.com",
+            full_name="Cuenta de prueba",
             password_hash="hash",
             role="merchant",
             store_id=None,
@@ -102,6 +103,7 @@ def test_admin_cannot_have_store(db_session) -> None:
     db_session.add(
         User(
             email="admin@example.com",
+            full_name="Cuenta de prueba",
             password_hash="hash",
             role="admin",
             store_id=store.id,
@@ -114,6 +116,7 @@ def test_invalid_role_is_rejected(db_session) -> None:
     db_session.add(
         User(
             email="visitor@example.com",
+            full_name="Cuenta de prueba",
             password_hash="hash",
             role="visitor",
             store_id=None,
@@ -127,6 +130,7 @@ def test_only_one_merchant_per_store(db_session) -> None:
     db_session.add(
         User(
             email="first@example.com",
+            full_name="Cuenta de prueba",
             password_hash="hash",
             role="merchant",
             store_id=store.id,
@@ -137,6 +141,7 @@ def test_only_one_merchant_per_store(db_session) -> None:
     db_session.add(
         User(
             email="second@example.com",
+            full_name="Cuenta de prueba",
             password_hash="hash",
             role="merchant",
             store_id=store.id,
@@ -149,6 +154,7 @@ def test_email_is_unique_case_insensitive(db_session) -> None:
     db_session.add(
         User(
             email="merchant@example.com",
+            full_name="Cuenta de prueba",
             password_hash="hash",
             role="merchant",
             store_id=_store(db_session).id,
@@ -159,6 +165,7 @@ def test_email_is_unique_case_insensitive(db_session) -> None:
     db_session.add(
         User(
             email="MERCHANT@example.com",
+            full_name="Cuenta de prueba",
             password_hash="hash",
             role="merchant",
             store_id=_store(db_session, number=2, side="left", position=1).id,
@@ -363,6 +370,7 @@ def test_store_with_merchant_cannot_be_deleted(db_session) -> None:
     db_session.add(
         User(
             email="merchant@example.com",
+            full_name="Cuenta de prueba",
             password_hash="hash",
             role="merchant",
             store_id=store.id,

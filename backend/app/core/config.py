@@ -7,8 +7,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Typed application configuration.
 
-    ``DATABASE_URL`` is required, so instantiating ``Settings`` without it
-    raises a validation error that identifies the missing variable.
+    ``DATABASE_URL`` and ``JWT_SECRET`` are required, so instantiating
+    ``Settings`` without them raises a validation error that identifies the
+    missing variable.
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -18,6 +19,18 @@ class Settings(BaseSettings):
     database_url: str = Field(
         ...,
         description="SQLAlchemy database URL (for example postgresql+psycopg://...).",
+    )
+    jwt_secret: str = Field(
+        ...,
+        description="Secret used to sign access tokens; required.",
+    )
+    jwt_algorithm: str = Field(
+        default="HS256",
+        description="Algorithm used to sign access tokens.",
+    )
+    jwt_expire_minutes: int = Field(
+        default=60,
+        description="Access token lifetime in minutes.",
     )
     cors_origins: str = Field(
         default="http://localhost:5173",

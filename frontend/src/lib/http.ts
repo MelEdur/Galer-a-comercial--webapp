@@ -1,3 +1,5 @@
+import { getStoredToken } from './token'
+
 const DEFAULT_API_URL = 'http://localhost:8000/api'
 
 function resolveApiUrl(): string {
@@ -18,11 +20,14 @@ export class ApiError extends Error {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getStoredToken()
+
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init?.headers,
     },
   })

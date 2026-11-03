@@ -39,13 +39,14 @@ class User(TimestampMixin, Base):
             "uq_users_store_merchant",
             "store_id",
             unique=True,
-            postgresql_where=text("role = 'merchant'"),
+            postgresql_where=text("role = 'merchant' AND is_active"),
         ),
         Index("ix_users_store_id", "store_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     email: Mapped[str] = mapped_column(String(320), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(120), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     is_active: Mapped[bool] = mapped_column(
@@ -57,4 +58,4 @@ class User(TimestampMixin, Base):
         nullable=True,
     )
 
-    store: Mapped[Store | None] = relationship(back_populates="merchant")
+    store: Mapped[Store | None] = relationship(back_populates="merchants")
