@@ -1,0 +1,66 @@
+name: galeria-comercial
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-galeria}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-galeria}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://galeria:change-me@db:5432/galeria}
+      TEST_DATABASE_URL: ${TEST_DATABASE_URL:-postgresql+psycopg://galeria:change-me@db:5432/app_test}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api}
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    depends_on:
+      backend:
+        condition: service_started
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+
+volumes:
+  postgres_data:

@@ -1,0 +1,72 @@
+
+schema: spec-driven
+
+context: |
+  This project is a web application designed to promote commercial stores
+  within a shopping gallery and improve the visitor shopping experience.
+
+  Technology stack:
+  Backend:
+  - Python, FastAPI, SQLAlchemy 2.0, Pydantic 2, Alembic, PostgreSQL, Pytest.
+  Frontend:
+  - React, TypeScript, Vite, Tailwind CSS, React Router, Fetch API,
+    TanStack Query, Vitest, React Testing Library.
+  Infrastructure:
+  - Docker and Docker Compose.
+
+  Technologies excluded for now:
+  - Axios (use Fetch API), shadcn/ui, ESLint, Prettier, Ruff.
+
+  Architecture:
+  - Use a simple modular monolithic architecture.
+  - Separate the backend and frontend applications, with the backend owning
+    the API contract consumed by the frontend.
+  - Organize code by functional modules.
+  - Avoid unnecessary abstractions, layers, and design patterns.
+  - Do not introduce microservices.
+  - Prioritize maintainability and simplicity.
+
+  Working methodology:
+  - Work incrementally: each independent use case or functionality must have
+    its own OpenSpec change.
+  - Do not create global proposals covering multiple unrequested features.
+  - Do not implement changes until the proposal is explicitly approved.
+  - Identify dependencies, impacts on existing functionality, ambiguities,
+    and pending decisions in every proposal.
+
+  User roles:
+  - Visitor: Browse stores and products, search and view information.
+  - Merchant: Manage their assigned store and its products.
+  - Administrator: Manage merchant accounts and assign stores.
+
+  All OpenSpec artifacts must be written in Spanish.
+
+rules:
+  proposal:
+    - Describe the problem and proposed solution clearly.
+    - Cover a single use case or functionality per change.
+    - Explicitly identify the scope and out-of-scope functionality.
+    - Identify dependencies, impacts on existing functionality, ambiguities
+      and pending decisions.
+    - Respect the defined technology stack and architecture.
+    - Avoid introducing technologies or dependencies without justification.
+  specs:
+    - Write requirements using clear and testable language.
+    - Include acceptance scenarios.
+  design:
+    - Prefer simple solutions aligned with the existing architecture.
+    - Respect the defined technology stack and the backend/frontend separation.
+    - Explain relevant architectural decisions without overengineering.
+  tasks:
+    - Break implementation into small, verifiable tasks.
+    - Group tasks by backend, frontend, and integration when appropriate.
+
+operations:
+  apply:
+    guidance:
+      - Follow the approved proposal, design, and specifications.
+      - Do not implement functionality outside the approved scope.
+      - Report tests executed and any remaining issues.
+  archive:
+    guidance:
+      - Verify that implementation and specifications are consistent before archiving.
