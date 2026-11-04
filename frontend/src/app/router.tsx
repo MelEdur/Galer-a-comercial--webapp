@@ -7,11 +7,17 @@ import { AdminPage } from '../pages/AdminPage'
 import { HomePage } from '../pages/HomePage'
 import { MerchantPage } from '../pages/MerchantPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
+import { ProductFormPage } from '../features/merchant-catalog/ProductFormPage'
+import { ProductListPage } from '../features/merchant-catalog/ProductListPage'
+import { ProductDetailPage } from '../features/product-detail/ProductDetailPage'
+import { SearchPage } from '../features/product-search/SearchPage'
 
 export function AppRoutes(): ReactElement {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
+      <Route path="/buscar" element={<SearchPage />} />
+      <Route path="/productos/:productId" element={<ProductDetailPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/admin"
@@ -34,6 +40,30 @@ export function AppRoutes(): ReactElement {
         element={
           <ProtectedRoute role="merchant">
             <MerchantPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/comerciante/productos"
+        element={
+          <ProtectedRoute role="merchant">
+            <ProductListPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/comerciante/productos/nuevo"
+        element={
+          <ProtectedRoute role="merchant">
+            <ProductFormPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/comerciante/productos/:productId/editar"
+        element={
+          <ProtectedRoute role="merchant">
+            <ProductFormPage />
           </ProtectedRoute>
         }
       />

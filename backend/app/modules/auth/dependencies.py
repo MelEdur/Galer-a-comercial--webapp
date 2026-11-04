@@ -54,3 +54,18 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
             detail="Acceso denegado",
         )
     return current_user
+
+
+def require_merchant(current_user: User = Depends(get_current_user)) -> User:
+    """Allow only active merchant accounts assigned to a store."""
+    if current_user.role != "merchant":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado",
+        )
+    if current_user.store_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="El comerciante no tiene un local asignado.",
+        )
+    return current_user

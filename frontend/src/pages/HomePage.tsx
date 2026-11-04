@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react'
+import { Link } from 'react-router-dom'
 import { HealthStatus } from '../features/health/HealthStatus'
 
 export function HomePage(): ReactElement {
@@ -10,10 +11,23 @@ export function HomePage(): ReactElement {
         </p>
         <h1 className="text-3xl font-bold text-slate-900 sm:text-4xl">Galería Comercial</h1>
         <p className="max-w-2xl text-base text-slate-600">
-          Punto de partida de la aplicación: descubre próximamente los locales y productos de la
-          galería, así como su ubicación en el mapa interactivo.
+          Descubre los productos y locales de la galería, y encuentra lo que buscas por nombre,
+          categoría o precio.
         </p>
       </header>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-semibold text-slate-900">Explora el catálogo</h2>
+        <p className="mt-2 text-sm text-slate-600">
+          Busca productos disponibles en todos los locales de la galería.
+        </p>
+        <Link
+          to="/buscar"
+          className="mt-4 inline-flex rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+        >
+          Buscar productos
+        </Link>
+      </section>
 
       <HealthStatus />
     </main>

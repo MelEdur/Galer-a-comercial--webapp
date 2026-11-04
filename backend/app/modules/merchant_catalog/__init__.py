@@ -1,0 +1,1 @@
+"""Merchant product catalog module."""

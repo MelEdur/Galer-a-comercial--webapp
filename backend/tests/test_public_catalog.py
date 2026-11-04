@@ -1,0 +1,1035 @@
+"""API tests for the public product search (CU #1)."""
+
+from datetime import datetime, timezone
+from decimal import Decimal
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.modules.analytics.models import ProductSearchEvent
+from app.modules.catalog.models import Category, Product, ProductCategory, ProductImage
+from app.modules.stores.models import Store
+from tests.conftest import requires_database
+
+pytestmark = requires_database
+
+PRODUCTS_URL = "/api/public/products"
+CATEGORIES_URL = "/api/public/categories"
+
+
+def _add_product(
+    session: Session,
+    store: Store,
+    *,
+    name: str = "Producto",
+    description: str | None = None,
+    price: str = "10.00",
+    offer_price: str | None = None,
+    categories: tuple[Category, ...] = (),
+    image_urls: tuple[str, ...] = (),
+    is_active: bool = True,
+    deleted: bool = False,
+) -> Product:
+    product = Product(
+        store_id=store.id,
+        name=name,
+        description=description,
+        price=Decimal(price),
+        offer_price=Decimal(offer_price) if offer_price is not None else None,
+        is_active=is_active and not deleted,
+        deleted_at=datetime.now(timezone.utc) if deleted else None,
+    )
+    for category in categories:
+        product.product_categories.append(ProductCategory(category=category))
+    for position, url in enumerate(image_urls):
+        product.images.append(
+            ProductImage(
+                url=url,
+                position=position,
+                is_primary=position == 0,
+            )
+        )
+    session.add(product)
+    session.commit()
+    return product
+
+
+def _event_count(session: Session) -> int:
+    return session.scalar(select(func.count()).select_from(ProductSearchEvent)) or 0
+
+
+@pytest.fixture
+def categories(db_session: Session) -> list[Category]:
+    items = [
+        Category(name="Indumentaria"),
+        Category(name="Calzado"),
+        Category(name="Accesorios"),
+    ]
+    db_session.add_all(items)
+    db_session.commit()
+    return items
+
+
+@pytest.fixture
+def other_store(db_session: Session, store: Store) -> Store:
+    item = Store(number=2, name="Local 2", side="left", position=1)
+    db_session.add(item)
+    db_session.commit()
+    return item
+
+
+@pytest.fixture
+def inactive_store(db_session: Session, store: Store, other_store: Store) -> Store:
+    item = Store(
+        number=3, name="Local 3", side="left", position=2, is_active=False
+    )
+    db_session.add(item)
+    db_session.commit()
+    return item
+
+
+# --- Contract --------------------------------------------------------------
+
+
+def test_public_search_without_token_returns_expected_contract(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    categories: list[Category],
+) -> None:
+    _add_product(
+        db_session,
+        store,
+        name="Remera",
+        description="Algodón",
+        price="1500.00",
+        offer_price="1200.00",
+        categories=(categories[0],),
+        image_urls=("https://example.com/remera.jpg",),
+    )
+
+    response = api_client.get(PRODUCTS_URL)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["page"] == 1
+    assert body["page_size"] == 20
+    assert body["pages"] == 1
+
+    item = body["items"][0]
+    assert set(item) == {
+        "id",
+        "name",
+        "description",
+        "price",
+        "offer_price",
+        "effective_price",
+        "categories",
+        "primary_image",
+        "store",
+    }
+    assert item["name"] == "Remera"
+    assert item["description"] == "Algodón"
+    assert item["price"] == "1500.00"
+    assert item["offer_price"] == "1200.00"
+    assert item["effective_price"] == "1200.00"
+    assert item["categories"] == [
+        {"id": categories[0].id, "name": categories[0].name}
+    ]
+    assert item["primary_image"] == {
+        "url": "https://example.com/remera.jpg",
+        "alt_text": None,
+    }
+    assert item["store"] == {"id": store.id, "number": 1, "name": "Local 1"}
+    assert "store_id" not in item
+    assert "is_active" not in item
+    assert "deleted_at" not in item
+    assert "password" not in response.text.lower()
+
+
+def test_primary_image_uses_lowest_position_when_no_flag(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    product = Product(
+        store_id=store.id,
+        name="Con imágenes",
+        price=Decimal("10.00"),
+        is_active=True,
+    )
+    product.images.append(
+        ProductImage(url="https://example.com/b.jpg", position=1, is_primary=False)
+    )
+    product.images.append(
+        ProductImage(url="https://example.com/a.jpg", position=0, is_primary=False)
+    )
+    db_session.add(product)
+    db_session.commit()
+
+    response = api_client.get(PRODUCTS_URL)
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["primary_image"]["url"] == (
+        "https://example.com/a.jpg"
+    )
+
+
+def test_product_without_images_has_null_primary_image(
+    api_client: TestClient, db_session: Session, store: Store
+) -> None:
+    _add_product(db_session, store, name="Sin imagen")
+
+    response = api_client.get(PRODUCTS_URL)
+
+    assert response.json()["items"][0]["primary_image"] is None
+
+
+# --- Name search -----------------------------------------------------------
+
+
+def test_search_is_partial_and_case_insensitive(
+    api_client: TestClient, db_session: Session, store: Store
+) -> None:
+    _add_product(db_session, store, name="Camisa")
+    _add_product(db_session, store, name="CAMPERA")
+    _add_product(db_session, store, name="Pantalón")
+
+    response = api_client.get(PRODUCTS_URL, params={"search": "cAm"})
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()["items"]] == [
+        "Camisa",
+        "CAMPERA",
+    ]
+
+
+def test_search_treats_wildcards_as_literal_characters(
+    api_client: TestClient, db_session: Session, store: Store
+) -> None:
+    _add_product(db_session, store, name="50% off")
+    _add_product(db_session, store, name="a_b")
+    _add_product(db_session, store, name="aXb")
+
+    by_percent = api_client.get(PRODUCTS_URL, params={"search": "%"})
+    assert [item["name"] for item in by_percent.json()["items"]] == ["50% off"]
+
+    by_underscore = api_client.get(PRODUCTS_URL, params={"search": "_"})
+    assert [item["name"] for item in by_underscore.json()["items"]] == ["a_b"]
+
+
+def test_empty_search_is_treated_as_no_criteria(
+    api_client: TestClient, db_session: Session, store: Store
+) -> None:
+    _add_product(db_session, store, name="Uno")
+    _add_product(db_session, store, name="Dos")
+
+    response = api_client.get(PRODUCTS_URL, params={"search": "   "})
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 2
+
+
+# --- Category filter -------------------------------------------------------
+
+
+def test_filter_by_category_with_and_without_results(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    categories: list[Category],
+) -> None:
+    indumentaria, calzado, accesorios = categories
+    _add_product(db_session, store, name="Remera", categories=(indumentaria,))
+    _add_product(db_session, store, name="Zapatilla", categories=(calzado,))
+
+    with_results = api_client.get(
+        PRODUCTS_URL, params={"category_id": calzado.id}
+    )
+    assert [item["name"] for item in with_results.json()["items"]] == [
+        "Zapatilla"
+    ]
+
+    without_results = api_client.get(
+        PRODUCTS_URL, params={"category_id": accesorios.id}
+    )
+    assert without_results.json()["items"] == []
+    assert without_results.json()["total"] == 0
+
+
+# --- Price filters ---------------------------------------------------------
+
+
+def test_filter_by_min_price_inclusive(
+    api_client: TestClient, db_session: Session, store: Store
+) -> None:
+    _add_product(db_session, store, name="Barato", price="5.00")
+    _add_product(db_session, store, name="Medio", price="10.00")
+    _add_product(db_session, store, name="Caro", price="20.00")
+
+    response = api_client.get(PRODUCTS_URL, params={"min_price": "10.00"})
+
+    assert [item["name"] for item in response.json()["items"]] == [
+        "Caro",
+        "Medio",
+    ]
+
+
+def test_filter_by_max_price_inclusive(
+    api_client: TestClient, db_session: Session, store: Store
+) -> None:
+    _add_product(db_session, store, name="Barato", price="5.00")
+    _add_product(db_session, store, name="Medio", price="10.00")
+    _add_product(db_session, store, name="Caro", price="20.00")
+
+    response = api_client.get(PRODUCTS_URL, params={"max_price": "10.00"})
+
+    assert [item["name"] for item in response.json()["items"]] == [
+        "Barato",
+        "Medio",
+    ]
+
+
+def test_filter_by_price_range(
+    api_client: TestClient, db_session: Session, store: Store
+) -> None:
+    _add_product(db_session, store, name="Barato", price="5.00")
+    _add_product(db_session, store, name="Medio", price="10.00")
+    _add_product(db_session, store, name="Caro", price="20.00")
+
+    response = api_client.get(
+        PRODUCTS_URL, params={"min_price": "7.00", "max_price": "15.00"}
+    )
+
+    assert [item["name"] for item in response.json()["items"]] == ["Medio"]
+
+
+def test_price_filter_uses_effective_offer_price(
+    api_client: TestClient, db_session: Session, store: Store
+) -> None:
+    _add_product(
+        db_session,
+        store,
+        name="Oferta",
+        price="20.00",
+        offer_price="8.00",
+    )
+
+    within = api_client.get(PRODUCTS_URL, params={"max_price": "10.00"})
+    assert within.json()["total"] == 1
+    assert within.json()["items"][0]["effective_price"] == "8.00"
+
+    excluded = api_client.get(PRODUCTS_URL, params={"min_price": "15.00"})
+    assert excluded.json()["total"] == 0
+
+
+def test_invalid_price_range_returns_422(
+    api_client: TestClient,
+) -> None:
+    response = api_client.get(
+        PRODUCTS_URL, params={"min_price": "20.00", "max_price": "10.00"}
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("field", ["min_price", "max_price"])
+def test_negative_price_returns_422(
+    api_client: TestClient, field: str
+) -> None:
+    response = api_client.get(PRODUCTS_URL, params={field: "-1.00"})
+
+    assert response.status_code == 422
+
+
+# --- Combined filters ------------------------------------------------------
+
+
+def test_combines_name_category_and_price_filters(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    categories: list[Category],
+) -> None:
+    indumentaria, calzado, _ = categories
+    _add_product(
+        db_session,
+        store,
+        name="Remera Azul",
+        price="100.00",
+        categories=(indumentaria,),
+    )
+    _add_product(
+        db_session,
+        store,
+        name="Remera Roja",
+        price="300.00",
+        categories=(indumentaria,),
+    )
+    _add_product(
+        db_session,
+        store,
+        name="Remera Verde",
+        price="150.00",
+        categories=(calzado,),
+    )
+    _add_product(
+        db_session,
+        store,
+        name="Pantalón Azul",
+        price="120.00",
+        categories=(indumentaria,),
+    )
+
+    response = api_client.get(
+        PRODUCTS_URL,
+        params={
+            "search": "remera",
+            "category_id": indumentaria.id,
+            "min_price": "50.00",
+            "max_price": "200.00",
+        },
+    )
+
+    assert [item["name"] for item in response.json()["items"]] == [
+        "Remera Azul"
+    ]
+
+
+# --- Availability ----------------------------------------------------------
+
+
+def test_only_available_products_are_returned(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    other_store: Store,
+    inactive_store: Store,
+) -> None:
+    _add_product(db_session, store, name="Disponible")
+    _add_product(db_session, store, name="Eliminado", deleted=True)
+    _add_product(db_session, store, name="Inactivo", is_active=False)
+    _add_product(db_session, inactive_store, name="Local inactivo")
+    _add_product(db_session, other_store, name="Otro local activo")
+
+    response = api_client.get(PRODUCTS_URL)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert {item["name"] for item in body["items"]} == {
+        "Disponible",
+        "Otro local activo",
+    }
+
+
+# --- Ordering --------------------------------------------------------------
+
+
+def test_order_by_name_is_case_insensitive(
+    api_client: TestClient, db_session: Session, store: Store
+) -> None:
+    _add_product(db_session, store, name="Zapato")
+    _add_product(db_session, store, name="camisa")
+
+    response = api_client.get(PRODUCTS_URL)
+
+    assert [item["name"] for item in response.json()["items"]] == [
+        "camisa",
+        "Zapato",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("sort", "expected"),
+    [
+        ("price_asc", ["Barato", "Medio", "Caro"]),
+        ("price_desc", ["Caro", "Medio", "Barato"]),
+    ],
+)
+def test_order_by_effective_price(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    sort: str,
+    expected: list[str],
+) -> None:
+    _add_product(db_session, store, name="Medio", price="10.00")
+    _add_product(db_session, store, name="Barato", price="20.00", offer_price="5.00")
+    _add_product(db_session, store, name="Caro", price="30.00")
+
+    response = api_client.get(PRODUCTS_URL, params={"sort": sort})
+
+    assert [item["name"] for item in response.json()["items"]] == expected
+
+
+# --- Pagination ------------------------------------------------------------
+
+
+def test_pagination_returns_page_metadata(
+    api_client: TestClient, db_session: Session, store: Store
+) -> None:
+    for letter in "ABCDE":
+        _add_product(db_session, store, name=f"Producto {letter}")
+
+    response = api_client.get(
+        PRODUCTS_URL, params={"page": 2, "page_size": 2}
+    )
+
+    body = response.json()
+    assert [item["name"] for item in body["items"]] == [
+        "Producto C",
+        "Producto D",
+    ]
+    assert body["total"] == 5
+    assert body["page"] == 2
+    assert body["page_size"] == 2
+    assert body["pages"] == 3
+
+
+@pytest.mark.parametrize(
+    "params", [{"page": 0}, {"page_size": 0}, {"page_size": 101}]
+)
+def test_pagination_rejects_out_of_range_values(
+    api_client: TestClient, params: dict
+) -> None:
+    response = api_client.get(PRODUCTS_URL, params=params)
+
+    assert response.status_code == 422
+
+
+def test_search_without_criteria_returns_all_available(
+    api_client: TestClient, db_session: Session, store: Store
+) -> None:
+    _add_product(db_session, store, name="Uno")
+    _add_product(db_session, store, name="Dos")
+    _add_product(db_session, store, name="Tres")
+    _add_product(db_session, store, name="Eliminado", deleted=True)
+
+    response = api_client.get(PRODUCTS_URL)
+
+    body = response.json()
+    assert body["total"] == 3
+    assert len(body["items"]) == 3
+
+
+# --- Public categories -----------------------------------------------------
+
+
+def test_public_categories_are_ordered_by_name(
+    api_client: TestClient, db_session: Session
+) -> None:
+    db_session.add_all(
+        [
+            Category(name="Zapatos"),
+            Category(name="accesorios"),
+            Category(name="Indumentaria"),
+        ]
+    )
+    db_session.commit()
+
+    response = api_client.get(CATEGORIES_URL)
+
+    assert response.status_code == 200
+    assert [category["name"] for category in response.json()] == [
+        "accesorios",
+        "Indumentaria",
+        "Zapatos",
+    ]
+
+
+def test_public_categories_do_not_require_token(api_client: TestClient) -> None:
+    response = api_client.get(CATEGORIES_URL)
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+# --- Search events ---------------------------------------------------------
+
+
+def test_search_with_criteria_records_one_event_per_page_product(
+    api_client: TestClient, db_session: Session, store: Store
+) -> None:
+    products = [
+        _add_product(db_session, store, name=f"Remera {index}")
+        for index in range(3)
+    ]
+
+    response = api_client.get(
+        PRODUCTS_URL, params={"search": "remera", "page_size": 2}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 3
+    assert len(response.json()["items"]) == 2
+
+    events = db_session.scalars(select(ProductSearchEvent)).all()
+    assert len(events) == 2
+    assert {event.query for event in events} == {"remera"}
+    returned_ids = {item["id"] for item in response.json()["items"]}
+    assert {event.product_id for event in events} == returned_ids
+    assert {product.id for product in products} >= returned_ids
+
+
+def test_search_without_criteria_records_no_events(
+    api_client: TestClient, db_session: Session, store: Store
+) -> None:
+    _add_product(db_session, store, name="Uno")
+    _add_product(db_session, store, name="Dos")
+
+    response = api_client.get(PRODUCTS_URL)
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 2
+    assert _event_count(db_session) == 0
+
+
+def test_search_without_results_records_no_events(
+    api_client: TestClient, db_session: Session, store: Store
+) -> None:
+    _add_product(db_session, store, name="Uno")
+
+    response = api_client.get(PRODUCTS_URL, params={"search": "inexistente"})
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 0
+    assert _event_count(db_session) == 0
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"category_id": 9999},
+        {"min_price": "100.00"},
+        {"max_price": "1.00"},
+        {"search": "zzz"},
+    ],
+)
+def test_categorized_search_without_results_records_no_events(
+    api_client: TestClient, db_session: Session, store: Store, params: dict
+) -> None:
+    _add_product(db_session, store, name="Uno", price="10.00")
+
+    response = api_client.get(PRODUCTS_URL, params=params)
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 0
+    assert _event_count(db_session) == 0
+
+
+def test_events_are_kept_after_product_is_deleted(
+    api_client: TestClient, db_session: Session, store: Store
+) -> None:
+    product = _add_product(db_session, store, name="Remera")
+
+    api_client.get(PRODUCTS_URL, params={"search": "remera"})
+    db_session.expire_all()
+    assert _event_count(db_session) == 1
+
+    product.is_active = False
+    product.deleted_at = datetime.now(timezone.utc)
+    db_session.commit()
+
+    db_session.expire_all()
+    assert _event_count(db_session) == 1
+
+    after = api_client.get(PRODUCTS_URL, params={"search": "remera"})
+    assert after.json()["total"] == 0
+
+
+# --- Product detail (CU #3) ------------------------------------------------
+
+
+def test_product_detail_without_token_returns_public_contract(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    categories: list[Category],
+) -> None:
+    store.logo_url = "https://example.com/logo.png"
+    store.email = "local@galeria.local"
+    store.phone = "1122334455"
+    store.whatsapp = "1122334455"
+    db_session.commit()
+
+    product = _add_product(
+        db_session,
+        store,
+        name="Remera",
+        description="Algodón",
+        price="1500.00",
+        offer_price="1200.00",
+        categories=(categories[0],),
+        image_urls=("https://example.com/remera.jpg",),
+    )
+
+    response = api_client.get(f"{PRODUCTS_URL}/{product.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {
+        "id",
+        "name",
+        "description",
+        "price",
+        "offer_price",
+        "effective_price",
+        "categories",
+        "images",
+        "store",
+    }
+    assert body["id"] == product.id
+    assert body["name"] == "Remera"
+    assert body["description"] == "Algodón"
+    assert body["price"] == "1500.00"
+    assert body["offer_price"] == "1200.00"
+    assert body["effective_price"] == "1200.00"
+    assert body["categories"] == [
+        {"id": categories[0].id, "name": categories[0].name}
+    ]
+    assert len(body["images"]) == 1
+    image = body["images"][0]
+    assert set(image) == {"id", "url", "alt_text", "position", "is_primary"}
+    assert image["url"] == "https://example.com/remera.jpg"
+    assert image["alt_text"] is None
+    assert image["position"] == 0
+    assert image["is_primary"] is True
+    assert body["store"] == {
+        "id": store.id,
+        "number": 1,
+        "name": "Local 1",
+        "logo_url": "https://example.com/logo.png",
+        "email": "local@galeria.local",
+        "phone": "1122334455",
+        "whatsapp": "1122334455",
+    }
+    assert "store_id" not in body
+    assert "is_active" not in body
+    assert "deleted_at" not in body
+    assert "password" not in response.text.lower()
+
+
+def test_product_detail_orders_images_by_position_and_marks_primary(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    product = Product(
+        store_id=store.id,
+        name="Galería",
+        price=Decimal("10.00"),
+        is_active=True,
+    )
+    db_session.add(product)
+    db_session.flush()
+    db_session.add_all(
+        [
+            ProductImage(
+                product_id=product.id,
+                url="https://example.com/tercera.jpg",
+                alt_text="Tercera",
+                position=2,
+                is_primary=False,
+            ),
+            ProductImage(
+                product_id=product.id,
+                url="https://example.com/primera.jpg",
+                alt_text="Primera",
+                position=0,
+                is_primary=False,
+            ),
+            ProductImage(
+                product_id=product.id,
+                url="https://example.com/segunda.jpg",
+                alt_text="Segunda",
+                position=1,
+                is_primary=True,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = api_client.get(f"{PRODUCTS_URL}/{product.id}")
+
+    assert response.status_code == 200
+    images = response.json()["images"]
+    assert [image["url"] for image in images] == [
+        "https://example.com/primera.jpg",
+        "https://example.com/segunda.jpg",
+        "https://example.com/tercera.jpg",
+    ]
+    assert [image["position"] for image in images] == [0, 1, 2]
+    assert [image["is_primary"] for image in images] == [False, True, False]
+
+
+def test_product_detail_without_offer_uses_base_price(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    product = _add_product(db_session, store, name="Precio", price="1500.00")
+
+    response = api_client.get(f"{PRODUCTS_URL}/{product.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["price"] == "1500.00"
+    assert body["offer_price"] is None
+    assert body["effective_price"] == "1500.00"
+
+
+def test_product_detail_with_store_without_optional_fields(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    product = _add_product(db_session, store, name="Sin contacto")
+
+    response = api_client.get(f"{PRODUCTS_URL}/{product.id}")
+
+    assert response.status_code == 200
+    assert response.json()["store"] == {
+        "id": store.id,
+        "number": 1,
+        "name": "Local 1",
+        "logo_url": None,
+        "email": None,
+        "phone": None,
+        "whatsapp": None,
+    }
+
+
+def test_product_detail_404_when_product_is_not_available(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    inactive_store: Store,
+) -> None:
+    deleted = _add_product(db_session, store, name="Eliminado", deleted=True)
+    inactive = _add_product(db_session, store, name="Inactivo", is_active=False)
+    inactive_store_product = _add_product(
+        db_session, inactive_store, name="Local inactivo"
+    )
+
+    for product_id in (
+        deleted.id,
+        inactive.id,
+        inactive_store_product.id,
+        999999,
+    ):
+        response = api_client.get(f"{PRODUCTS_URL}/{product_id}")
+
+        assert response.status_code == 404
+
+
+def test_product_detail_non_numeric_id_returns_422(
+    api_client: TestClient,
+) -> None:
+    response = api_client.get(f"{PRODUCTS_URL}/abc")
+
+    assert response.status_code == 422
+
+
+# --- Similar products (CU #3) ----------------------------------------------
+
+
+def test_similar_products_by_shared_category(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    categories: list[Category],
+) -> None:
+    indumentaria, calzado, _ = categories
+    base = _add_product(
+        db_session, store, name="Remera", categories=(indumentaria,)
+    )
+    same_category = _add_product(
+        db_session, store, name="Zapatilla", categories=(indumentaria,)
+    )
+    _add_product(db_session, store, name="Lámpara", categories=(calzado,))
+
+    response = api_client.get(f"{PRODUCTS_URL}/{base.id}/similar")
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert [item["name"] for item in items] == ["Zapatilla"]
+    assert set(items[0]) == {
+        "id",
+        "name",
+        "description",
+        "price",
+        "offer_price",
+        "effective_price",
+        "categories",
+        "primary_image",
+        "store",
+    }
+    assert items[0]["store"] == {
+        "id": store.id,
+        "number": 1,
+        "name": "Local 1",
+    }
+    assert items[0]["id"] == same_category.id
+
+
+def test_similar_products_by_word_in_name(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    base = _add_product(db_session, store, name="Campera")
+    _add_product(db_session, store, name="Campera Azul")
+    _add_product(db_session, store, name="Pantalón")
+
+    response = api_client.get(f"{PRODUCTS_URL}/{base.id}/similar")
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()["items"]] == [
+        "Campera Azul"
+    ]
+
+
+def test_similar_products_prioritize_shared_categories(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    categories: list[Category],
+) -> None:
+    indumentaria, calzado, _ = categories
+    base = _add_product(
+        db_session,
+        store,
+        name="Remera",
+        categories=(indumentaria, calzado),
+    )
+    _add_product(
+        db_session, store, name="Zapatilla", categories=(indumentaria,)
+    )
+    _add_product(
+        db_session,
+        store,
+        name="Bufanda",
+        categories=(indumentaria, calzado),
+    )
+
+    response = api_client.get(f"{PRODUCTS_URL}/{base.id}/similar")
+
+    assert [item["name"] for item in response.json()["items"]] == [
+        "Bufanda",
+        "Zapatilla",
+    ]
+
+
+def test_similar_products_exclude_current_and_limit_to_six(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    categories: list[Category],
+) -> None:
+    indumentaria = categories[0]
+    base = _add_product(
+        db_session, store, name="Remera", categories=(indumentaria,)
+    )
+    for index in range(8):
+        _add_product(
+            db_session,
+            store,
+            name=f"Producto {index}",
+            categories=(indumentaria,),
+        )
+
+    response = api_client.get(f"{PRODUCTS_URL}/{base.id}/similar")
+
+    assert response.status_code == 200
+    names = [item["name"] for item in response.json()["items"]]
+    assert len(names) == 6
+    assert base.name not in names
+    assert base.id not in {
+        item["id"] for item in response.json()["items"]
+    }
+
+
+def test_similar_products_empty_without_categories_or_significant_words(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    categories: list[Category],
+) -> None:
+    base = _add_product(db_session, store, name="AB")
+    _add_product(db_session, store, name="AB Camisa", categories=(categories[0],))
+
+    response = api_client.get(f"{PRODUCTS_URL}/{base.id}/similar")
+
+    assert response.status_code == 200
+    assert response.json() == {"items": []}
+
+
+def test_similar_products_skips_unavailable_candidates(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    inactive_store: Store,
+    categories: list[Category],
+) -> None:
+    indumentaria = categories[0]
+    base = _add_product(
+        db_session, store, name="Remera", categories=(indumentaria,)
+    )
+    _add_product(
+        db_session, store, name="Eliminada", categories=(indumentaria,), deleted=True
+    )
+    _add_product(
+        db_session,
+        store,
+        name="Inactiva",
+        categories=(indumentaria,),
+        is_active=False,
+    )
+    _add_product(
+        db_session,
+        inactive_store,
+        name="Local inactivo",
+        categories=(indumentaria,),
+    )
+    available = _add_product(
+        db_session, store, name="Disponible", categories=(indumentaria,)
+    )
+
+    response = api_client.get(f"{PRODUCTS_URL}/{base.id}/similar")
+
+    assert [item["id"] for item in response.json()["items"]] == [available.id]
+
+
+@pytest.mark.parametrize(
+    ("deleted", "is_active"), [(True, False), (False, False)]
+)
+def test_similar_products_404_when_base_product_is_not_available(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    deleted: bool,
+    is_active: bool,
+) -> None:
+    product = _add_product(
+        db_session,
+        store,
+        name="Remera",
+        deleted=deleted,
+        is_active=is_active,
+    )
+
+    response = api_client.get(f"{PRODUCTS_URL}/{product.id}/similar")
+
+    assert response.status_code == 404
+
+
+def test_similar_products_404_for_unknown_product(
+    api_client: TestClient,
+) -> None:
+    response = api_client.get(f"{PRODUCTS_URL}/999999/similar")
+
+    assert response.status_code == 404

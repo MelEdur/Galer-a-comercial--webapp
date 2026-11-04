@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../features/auth/AuthContext'
 
 interface UpcomingSectionProps {
@@ -16,6 +16,28 @@ function UpcomingSection({ title, description }: UpcomingSectionProps): ReactEle
         Próximamente
       </p>
     </section>
+  )
+}
+
+interface SectionLinkProps {
+  title: string
+  description: string
+  to: string
+  actionLabel: string
+}
+
+function SectionLink({ title, description, to, actionLabel }: SectionLinkProps): ReactElement {
+  return (
+    <Link
+      to={to}
+      className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
+    >
+      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+      <p className="mt-2 text-sm text-slate-600">{description}</p>
+      <span className="mt-4 inline-block text-sm font-semibold text-indigo-600">
+        {actionLabel} →
+      </span>
+    </Link>
   )
 }
 
@@ -99,9 +121,11 @@ export function MerchantPage(): ReactElement {
       </section>
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-        <UpcomingSection
+        <SectionLink
           title="Productos"
           description="Gestiona el catálogo de productos de tu local."
+          to="/comerciante/productos"
+          actionLabel="Administrar catálogo"
         />
         <UpcomingSection
           title="Información del local"

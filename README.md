@@ -138,6 +138,23 @@ docker compose exec backend python -m scripts.seed_stores
 
 El script es idempotente: usa el número de local como clave natural y no inserta duplicados si se ejecuta más de una vez. Al finalizar imprime cuántos locales creó y cuántos ya existían.
 
+### Categorías iniciales
+
+Después de aplicar las migraciones, precarga las diez categorías globales del catálogo:
+
+```bash
+cd backend
+python -m scripts.seed_categories
+```
+
+Con Docker:
+
+```bash
+docker compose exec backend python -m scripts.seed_categories
+```
+
+El script compara los nombres sin distinguir mayúsculas, por lo que es idempotente: una segunda ejecución no crea duplicados. Imprime cuántas categorías creó y cuántas ya existían.
+
 ### Administrador inicial
 
 Después de aplicar las migraciones y definir `JWT_SECRET`, crea el administrador inicial:
@@ -162,6 +179,35 @@ El script lee `ADMIN_EMAIL`, `ADMIN_PASSWORD` y `ADMIN_FULL_NAME` (por defecto `
 - Las rutas `/api/admin/*` requieren un token con rol `admin`: sin token responden `401` y con rol `merchant` responden `403`.
 - `GET /api/admin/merchants`, `POST /api/admin/merchants` y `DELETE /api/admin/merchants/{id}` gestionan las cuentas de comerciante.
 - `GET /api/admin/stores` devuelve los 21 locales con su comerciante activo o `null`.
+
+## Catálogo del comerciante
+
+Las rutas `/api/merchant/*` requieren un token con rol `merchant` y un local asignado: sin token responden `401`, con rol `admin` responden `403` y un comerciante sin local responde `403`. El local se deriva siempre de la cuenta autenticada; ningún payload acepta `store_id`.
+
+- `GET /api/merchant/products` lista el catálogo propio. Query: `search` (nombre, sin distinguir mayúsculas), `status` (`active` por defecto, `deleted` o `all`), `category_id`, `page` (desde 1) y `page_size` (1–100, por defecto 20). Responde `{items, total, page, page_size, pages}`.
+- `GET /api/merchant/products/{id}` devuelve un producto propio, incluido uno eliminado; un producto de otro local responde `404`.
+- `POST /api/merchant/products` crea un producto (`201`) con `name`, `price`, `category_ids` (al menos una) y, opcionalmente, `description`, `offer_price` e `images` (máximo 5 `{url, alt_text?}` en `http`/`https`). La primera imagen queda como primaria.
+- `PATCH /api/merchant/products/{id}` actualiza parcialmente; `category_ids` e `images`, si se envían, reemplazan el conjunto anterior. Un producto eliminado responde `409`.
+- `DELETE /api/merchant/products/{id}` da de baja lógica de forma idempotente (`204`) y conserva sus datos e imágenes.
+- `POST /api/merchant/products/{id}/restore` restaura un producto eliminado propio y devuelve el producto (`200`); restaurar uno vigente no produce cambios y un producto de otro local responde `404`.
+- `GET /api/merchant/categories` devuelve las categorías globales `{id, name}` ordenadas por nombre.
+
+Los datos inválidos, las categorías inexistentes y una oferta que no sea menor que el precio responden `422`; los productos inexistentes o de otro local responden `404`.
+
+## Búsqueda pública
+
+Las rutas `/api/public/*` no requieren autenticación. Solo exponen productos disponibles: no eliminados, activos y de locales activos. Cada resultado incluye `id`, `name`, `description`, `price`, `offer_price`, `effective_price` (`coalesce(offer_price, price)`), `categories` (`{id, name}`), `primary_image` (`{url, alt_text}` o `null`) y `store` (`{id, number, name}`); nunca expone `store_id`, `is_active` ni `deleted_at`.
+
+- `GET /api/public/products` busca productos disponibles. Query: `search` (nombre, coincidencia parcial sin distinguir mayúsculas, comodines literales), `category_id`, `min_price` y `max_price` (inclusivos sobre el precio efectivo, no negativos), `page` (desde 1), `page_size` (1–100, por defecto 20) y `sort` (`name` por defecto, `price_asc` o `price_desc`). Los filtros se combinan con AND. Responde `{items, total, page, page_size, pages}`.
+- `GET /api/public/categories` devuelve todas las categorías globales `{id, name}` ordenadas por nombre.
+- Un rango con `min_price > max_price` o un precio negativo responde `422`. Sin criterios se devuelve todo el catálogo disponible paginado.
+- Cuando la consulta incluye al menos un criterio y la página devuelve productos, se registra un evento de búsqueda por producto de la página para las estadísticas de CU #10; la exploración sin criterios y las páginas vacías no registran eventos.
+
+## Detalle público
+
+- `GET /api/public/products/{id}` devuelve el detalle de un producto disponible: `id`, `name`, `description`, `price`, `offer_price`, `effective_price`, `categories`, `images` y `store`. Cada imagen incluye `id`, `url`, `alt_text`, `position` e `is_primary`, ordenadas por `position` y luego `id`. El local incluye `id`, `number`, `name`, `logo_url`, `email`, `phone` y `whatsapp` (los opcionales pueden ser `null`). No expone `store_id`, `is_active`, `deleted_at`, cuentas ni credenciales.
+- `GET /api/public/products/{id}/similar` devuelve `{items}` con hasta seis productos disponibles similares, usando el mismo esquema que la búsqueda (`primary_image` y `store` resumido). Se priorizan las categorías compartidas, luego las palabras del nombre (secuencias de letras de al menos 3 caracteres) y el nombre; el producto consultado nunca aparece.
+- Producto inexistente, eliminado, inactivo o de local inactivo responde `404` en ambos endpoints; un identificador no numérico responde `422`.
 
 ## Pruebas
 
