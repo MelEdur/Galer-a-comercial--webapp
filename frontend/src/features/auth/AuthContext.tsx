@@ -18,6 +18,7 @@ interface AuthContextValue {
   isAuthenticated: boolean
   login: (email: string, password: string) => Promise<CurrentUser>
   logout: () => void
+  refreshUser: () => Promise<CurrentUser | null>
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
@@ -91,6 +92,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setUser(null)
   }, [])
 
+  const refreshUser = useCallback(async (): Promise<CurrentUser | null> => {
+    if (!getStoredToken()) {
+      return null
+    }
+
+    const currentUser = await getCurrentUser()
+    setUser(currentUser)
+    return currentUser
+  }, [])
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -99,8 +110,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       isAuthenticated: Boolean(token && user),
       login,
       logout,
+      refreshUser,
     }),
-    [user, token, isLoading, login, logout],
+    [user, token, isLoading, login, logout, refreshUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

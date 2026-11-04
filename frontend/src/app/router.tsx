@@ -11,6 +11,7 @@ import { ProductFormPage } from '../features/merchant-catalog/ProductFormPage'
 import { ProductListPage } from '../features/merchant-catalog/ProductListPage'
 import { ProductDetailPage } from '../features/product-detail/ProductDetailPage'
 import { SearchPage } from '../features/product-search/SearchPage'
+import { StoreSettingsPage } from '../features/merchant-store/StoreSettingsPage'
 
 export function AppRoutes(): ReactElement {
   return (
@@ -40,6 +41,14 @@ export function AppRoutes(): ReactElement {
         element={
           <ProtectedRoute role="merchant">
             <MerchantPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/comerciante/local"
+        element={
+          <ProtectedRoute role="merchant">
+            <StoreSettingsPage />
           </ProtectedRoute>
         }
       />

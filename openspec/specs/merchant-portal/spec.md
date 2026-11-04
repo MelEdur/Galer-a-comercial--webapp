@@ -26,7 +26,7 @@ El sistema SHALL permitir que una cuenta activa con rol `merchant` inicie sesió
 
 ### Requirement: Panel del comerciante
 
-La aplicación frontend SHALL ofrecer una ruta protegida para el comerciante que muestre su identidad y los datos de su local, SHALL permitir cerrar sesión y SHALL enlazar al catálogo de productos de su local.
+La aplicación frontend SHALL ofrecer una ruta protegida para el comerciante que muestre su identidad y los datos de su local, SHALL permitir cerrar sesión y SHALL enlazar al catálogo de productos y a la administración de la información de su local.
 
 #### Scenario: Acceso al panel
 
@@ -41,12 +41,17 @@ La aplicación frontend SHALL ofrecer una ruta protegida para el comerciante que
 #### Scenario: Funcionalidades futuras
 
 - **WHEN** el comerciante accede al panel
-- **THEN** las secciones de información del local y estadísticas aparecen como no disponibles, sin ejecutar operaciones de esos casos de uso
+- **THEN** la sección de estadísticas aparece como no disponible, sin ejecutar operaciones de ese caso de uso
 
 #### Scenario: Acceso al catálogo
 
 - **WHEN** el comerciante accede al panel
 - **THEN** la sección de productos enlaza a la administración de su catálogo
+
+#### Scenario: Acceso a la información del local
+
+- **WHEN** el comerciante accede al panel
+- **THEN** la sección de información del local enlaza a la administración de los datos de su local
 
 ### Requirement: Separación de rutas por rol
 

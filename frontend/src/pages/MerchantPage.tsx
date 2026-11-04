@@ -127,9 +127,11 @@ export function MerchantPage(): ReactElement {
           to="/comerciante/productos"
           actionLabel="Administrar catálogo"
         />
-        <UpcomingSection
+        <SectionLink
           title="Información del local"
           description="Edita los datos públicos de tu local."
+          to="/comerciante/local"
+          actionLabel="Editar información"
         />
         <UpcomingSection
           title="Estadísticas"

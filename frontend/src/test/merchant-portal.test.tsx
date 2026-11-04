@@ -119,11 +119,14 @@ describe('Panel del comerciante', () => {
     expect(screen.getByText('Productos')).toBeInTheDocument()
     expect(screen.getByText('Información del local')).toBeInTheDocument()
     expect(screen.getByText('Estadísticas')).toBeInTheDocument()
-    expect(screen.getAllByText('Próximamente')).toHaveLength(2)
+    expect(screen.getAllByText('Próximamente')).toHaveLength(1)
     expect(screen.getByRole('link', { name: /productos/i })).toHaveAttribute(
       'href',
       '/comerciante/productos',
     )
+    expect(
+      screen.getByRole('link', { name: /información del local/i }),
+    ).toHaveAttribute('href', '/comerciante/local')
   })
 
   it('avisa cuando no hay local asignado', async () => {
