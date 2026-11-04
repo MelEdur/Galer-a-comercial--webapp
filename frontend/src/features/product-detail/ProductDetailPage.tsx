@@ -140,7 +140,12 @@ export function ProductDetailPage(): ReactElement {
                   <p className="text-sm font-semibold text-slate-900">
                     Local {product.store.number}
                   </p>
-                  <p className="text-sm text-slate-700">{product.store.name}</p>
+                  <Link
+                    to={`/locales/${product.store.id}`}
+                    className="text-sm font-medium text-indigo-600 hover:text-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+                  >
+                    {product.store.name}
+                  </Link>
                 </div>
 
                 <ul className="space-y-1 text-sm">

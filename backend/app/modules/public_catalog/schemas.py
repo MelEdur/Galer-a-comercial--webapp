@@ -5,6 +5,7 @@ needs and never internal columns such as ``store_id``, ``is_active`` or
 ``deleted_at``.
 """
 
+from datetime import time
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
@@ -102,3 +103,42 @@ class PublicSimilarProducts(BaseModel):
     """Products similar to the one being viewed."""
 
     items: list[PublicProduct]
+
+
+class PublicStoreHour(BaseModel):
+    """An opening interval of a store, as shown in its public profile."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    day_of_week: int
+    opens_at: time
+    closes_at: time
+
+
+class PublicStoreLink(BaseModel):
+    """An ordered external link of a store."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    label: str
+    url: str
+    position: int
+
+
+class PublicStoreProfile(BaseModel):
+    """The public profile of an available store.
+
+    Only visitor-facing data is exposed: internal columns such as ``is_active``,
+    ``side`` or ``position`` and related accounts or products are never included.
+    """
+
+    id: int
+    number: int
+    name: str
+    description: str | None
+    logo_url: str | None
+    email: str | None
+    phone: str | None
+    whatsapp: str | None
+    hours: list[PublicStoreHour]
+    links: list[PublicStoreLink]

@@ -1,6 +1,6 @@
 """API tests for the public product search (CU #1)."""
 
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from decimal import Decimal
 
 import pytest
@@ -10,13 +10,14 @@ from sqlalchemy.orm import Session
 
 from app.modules.analytics.models import ProductSearchEvent
 from app.modules.catalog.models import Category, Product, ProductCategory, ProductImage
-from app.modules.stores.models import Store
+from app.modules.stores.models import Store, StoreHour, StoreLink
 from tests.conftest import requires_database
 
 pytestmark = requires_database
 
 PRODUCTS_URL = "/api/public/products"
 CATEGORIES_URL = "/api/public/categories"
+STORES_URL = "/api/public/stores"
 
 
 def _add_product(
@@ -1033,3 +1034,208 @@ def test_similar_products_404_for_unknown_product(
     response = api_client.get(f"{PRODUCTS_URL}/999999/similar")
 
     assert response.status_code == 404
+
+
+# --- Store profile (CU #4) -------------------------------------------------
+
+
+def _add_hours(session: Session, store: Store, rows: list[tuple[int, str, str]]) -> None:
+    for day_of_week, opens_at, closes_at in rows:
+        session.add(
+            StoreHour(
+                store_id=store.id,
+                day_of_week=day_of_week,
+                opens_at=time.fromisoformat(opens_at),
+                closes_at=time.fromisoformat(closes_at),
+            )
+        )
+    session.commit()
+
+
+def _add_links(
+    session: Session, store: Store, rows: list[tuple[str, str, int]]
+) -> None:
+    for label, url, position in rows:
+        session.add(
+            StoreLink(
+                store_id=store.id,
+                label=label,
+                url=url,
+                position=position,
+            )
+        )
+    session.commit()
+
+
+def test_store_profile_without_token_returns_public_contract(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    store.description = "Descripción"
+    store.logo_url = "https://example.com/logo.png"
+    store.email = "local@galeria.local"
+    store.phone = "1122334455"
+    store.whatsapp = "5491122334455"
+    db_session.commit()
+    _add_hours(db_session, store, [(0, "09:00:00", "13:00:00")])
+    _add_links(
+        db_session,
+        store,
+        [("Instagram", "https://instagram.com/local", 0)],
+    )
+
+    response = api_client.get(f"{STORES_URL}/{store.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {
+        "id",
+        "number",
+        "name",
+        "description",
+        "logo_url",
+        "email",
+        "phone",
+        "whatsapp",
+        "hours",
+        "links",
+    }
+    assert body["id"] == store.id
+    assert body["number"] == 1
+    assert body["name"] == "Local 1"
+    assert body["description"] == "Descripción"
+    assert body["logo_url"] == "https://example.com/logo.png"
+    assert body["email"] == "local@galeria.local"
+    assert body["phone"] == "1122334455"
+    assert body["whatsapp"] == "5491122334455"
+    assert body["hours"] == [
+        {"day_of_week": 0, "opens_at": "09:00:00", "closes_at": "13:00:00"}
+    ]
+    assert set(body["hours"][0]) == {"day_of_week", "opens_at", "closes_at"}
+    assert body["links"] == [
+        {
+            "label": "Instagram",
+            "url": "https://instagram.com/local",
+            "position": 0,
+        }
+    ]
+    assert set(body["links"][0]) == {"label", "url", "position"}
+
+
+def test_store_profile_without_description_or_logo_and_partial_contact(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    store.email = "local@galeria.local"
+    db_session.commit()
+
+    response = api_client.get(f"{STORES_URL}/{store.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["description"] is None
+    assert body["logo_url"] is None
+    assert body["email"] == "local@galeria.local"
+    assert body["phone"] is None
+    assert body["whatsapp"] is None
+
+
+def test_store_profile_orders_hours_and_links(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    _add_hours(
+        db_session,
+        store,
+        [
+            (0, "15:00:00", "19:00:00"),
+            (1, "09:00:00", "13:00:00"),
+            (0, "09:00:00", "13:00:00"),
+        ],
+    )
+    _add_links(
+        db_session,
+        store,
+        [
+            ("Web", "https://web.example", 2),
+            ("Instagram", "https://instagram.example", 0),
+            ("Facebook", "https://facebook.example", 1),
+        ],
+    )
+
+    response = api_client.get(f"{STORES_URL}/{store.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [(hour["day_of_week"], hour["opens_at"]) for hour in body["hours"]] == [
+        (0, "09:00:00"),
+        (0, "15:00:00"),
+        (1, "09:00:00"),
+    ]
+    assert [link["label"] for link in body["links"]] == [
+        "Instagram",
+        "Facebook",
+        "Web",
+    ]
+    assert [link["position"] for link in body["links"]] == [0, 1, 2]
+
+
+def test_store_profile_without_hours_contact_or_links(
+    api_client: TestClient,
+    store: Store,
+) -> None:
+    response = api_client.get(f"{STORES_URL}/{store.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["hours"] == []
+    assert body["links"] == []
+    assert body["email"] is None
+    assert body["phone"] is None
+    assert body["whatsapp"] is None
+
+
+def test_store_profile_404_for_inactive_and_unknown_store(
+    api_client: TestClient,
+    inactive_store: Store,
+) -> None:
+    for store_id in (inactive_store.id, 999999):
+        response = api_client.get(f"{STORES_URL}/{store_id}")
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Local no encontrado."
+
+
+def test_store_profile_non_numeric_id_returns_422(
+    api_client: TestClient,
+) -> None:
+    response = api_client.get(f"{STORES_URL}/abc")
+
+    assert response.status_code == 422
+
+
+def test_store_profile_does_not_expose_internal_data(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    _add_hours(db_session, store, [(0, "09:00:00", "13:00:00")])
+    _add_links(db_session, store, [("Web", "https://web.example", 0)])
+    _add_product(db_session, store, name="Remera")
+
+    response = api_client.get(f"{STORES_URL}/{store.id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "is_active" not in body
+    assert "side" not in body
+    assert "position" not in body
+    assert "store_id" not in body
+    lowered = response.text.lower()
+    assert "password" not in lowered
+    assert "products" not in lowered
+    assert "accounts" not in lowered
+    assert "merchants" not in lowered

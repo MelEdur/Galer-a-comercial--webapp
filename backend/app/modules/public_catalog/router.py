@@ -12,11 +12,14 @@ from app.modules.public_catalog.schemas import (
     PublicCategory,
     PublicProductDetail,
     PublicSimilarProducts,
+    PublicStoreProfile,
 )
 from app.modules.public_catalog.service import (
     InvalidPriceRangeError,
     ProductNotFoundError,
+    StoreNotFoundError,
     get_product_detail,
+    get_store_profile,
     list_categories,
     list_products,
     list_similar_products,
@@ -116,6 +119,30 @@ def get_public_similar_products(
     try:
         return list_similar_products(db, product_id)
     except ProductNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from None
+
+
+@router.get(
+    "/stores/{store_id}",
+    response_model=PublicStoreProfile,
+    summary="Get the public profile of an available store",
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Store not available."},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "The store identifier is not numeric."
+        },
+    },
+)
+def get_public_store(
+    store_id: int, db: Session = Depends(get_db)
+) -> PublicStoreProfile:
+    """Return the store profile with its hours, contact data and links."""
+    try:
+        return get_store_profile(db, store_id)
+    except StoreNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),

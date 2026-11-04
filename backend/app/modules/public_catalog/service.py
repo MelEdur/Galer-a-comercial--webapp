@@ -25,8 +25,11 @@ from app.modules.public_catalog.schemas import (
     PublicSimilarProducts,
     PublicStore,
     PublicStoreDetail,
+    PublicStoreHour,
+    PublicStoreLink,
+    PublicStoreProfile,
 )
-from app.modules.stores.models import Store
+from app.modules.stores.models import Store, StoreHour, StoreLink
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,10 @@ class InvalidPriceRangeError(Exception):
 
 class ProductNotFoundError(Exception):
     """The requested product does not exist or is not publicly available."""
+
+
+class StoreNotFoundError(Exception):
+    """The requested store does not exist or is not publicly available."""
 
 
 def _escape_like(value: str) -> str:
@@ -395,3 +402,40 @@ def list_categories(session: Session) -> list[PublicCategory]:
         select(Category).order_by(func.lower(Category.name), Category.id)
     ).all()
     return [PublicCategory.model_validate(category) for category in rows]
+
+
+def get_store_profile(session: Session, store_id: int) -> PublicStoreProfile:
+    """Return the public profile of an available store.
+
+    Hours are ordered by weekday and opening time, links by their position.
+    Both collections are eager loaded to avoid N+1 queries.
+
+    Raises:
+        StoreNotFoundError: if the store is missing or inactive.
+    """
+    store = session.scalars(
+        select(Store)
+        .where(Store.id == store_id, Store.is_active.is_(True))
+        .options(selectinload(Store.hours), selectinload(Store.links))
+    ).first()
+    if store is None:
+        raise StoreNotFoundError("Local no encontrado.")
+
+    hours = sorted(
+        store.hours,
+        key=lambda hour: (hour.day_of_week, hour.opens_at, hour.id),
+    )
+    links = sorted(store.links, key=lambda link: (link.position, link.id))
+
+    return PublicStoreProfile(
+        id=store.id,
+        number=store.number,
+        name=store.name,
+        description=store.description,
+        logo_url=store.logo_url,
+        email=store.email,
+        phone=store.phone,
+        whatsapp=store.whatsapp,
+        hours=[PublicStoreHour.model_validate(hour) for hour in hours],
+        links=[PublicStoreLink.model_validate(link) for link in links],
+    )

@@ -12,6 +12,7 @@ import { ProductListPage } from '../features/merchant-catalog/ProductListPage'
 import { ProductDetailPage } from '../features/product-detail/ProductDetailPage'
 import { SearchPage } from '../features/product-search/SearchPage'
 import { StoreSettingsPage } from '../features/merchant-store/StoreSettingsPage'
+import { StoreDetailPage } from '../features/store-detail/StoreDetailPage'
 
 export function AppRoutes(): ReactElement {
   return (
@@ -19,6 +20,7 @@ export function AppRoutes(): ReactElement {
       <Route path="/" element={<HomePage />} />
       <Route path="/buscar" element={<SearchPage />} />
       <Route path="/productos/:productId" element={<ProductDetailPage />} />
+      <Route path="/locales/:storeId" element={<StoreDetailPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/admin"
