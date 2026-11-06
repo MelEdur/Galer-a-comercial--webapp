@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import app.db.registry  # noqa: F401  (registers every ORM model)
 from app.core.config import settings
+from app.modules.analytics.router import router as analytics_router
 from app.modules.auth.router import router as auth_router
 from app.modules.health.router import router as health_router
 from app.modules.merchant_catalog.router import router as merchant_catalog_router
@@ -28,3 +29,4 @@ app.include_router(merchants_router, prefix="/api")
 app.include_router(merchant_catalog_router, prefix="/api")
 app.include_router(merchant_store_router, prefix="/api")
 app.include_router(public_catalog_router, prefix="/api")
+app.include_router(analytics_router, prefix="/api")

@@ -10,6 +10,7 @@ import { NotFoundPage } from '../pages/NotFoundPage'
 import { ProductFormPage } from '../features/merchant-catalog/ProductFormPage'
 import { ProductListPage } from '../features/merchant-catalog/ProductListPage'
 import { ProductDetailPage } from '../features/product-detail/ProductDetailPage'
+import { ProductStatsPage } from '../features/product-stats/ProductStatsPage'
 import { SearchPage } from '../features/product-search/SearchPage'
 import { StoreSettingsPage } from '../features/merchant-store/StoreSettingsPage'
 import { StoreDetailPage } from '../features/store-detail/StoreDetailPage'
@@ -63,6 +64,14 @@ export function AppRoutes(): ReactElement {
         element={
           <ProtectedRoute role="merchant">
             <ProductListPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/comerciante/estadisticas"
+        element={
+          <ProtectedRoute role="merchant">
+            <ProductStatsPage />
           </ProtectedRoute>
         }
       />

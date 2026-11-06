@@ -2,23 +2,6 @@ import type { ReactElement } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../features/auth/AuthContext'
 
-interface UpcomingSectionProps {
-  title: string
-  description: string
-}
-
-function UpcomingSection({ title, description }: UpcomingSectionProps): ReactElement {
-  return (
-    <section className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6">
-      <h2 className="text-lg font-semibold text-slate-700">{title}</h2>
-      <p className="mt-2 text-sm text-slate-500">{description}</p>
-      <p className="mt-4 inline-block rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 uppercase">
-        Próximamente
-      </p>
-    </section>
-  )
-}
-
 interface SectionLinkProps {
   title: string
   description: string
@@ -133,9 +116,11 @@ export function MerchantPage(): ReactElement {
           to="/comerciante/local"
           actionLabel="Editar información"
         />
-        <UpcomingSection
+        <SectionLink
           title="Estadísticas"
           description="Consulta las búsquedas de tus productos."
+          to="/comerciante/estadisticas"
+          actionLabel="Ver estadísticas"
         />
       </div>
     </main>
