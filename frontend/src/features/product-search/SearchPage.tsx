@@ -1,15 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ApiError } from '../../lib/http'
-import { listPublicCategories, searchProducts } from './api'
+import { searchProducts } from './api'
 import { ProductCard } from './ProductCard'
-import { SearchFilters } from './SearchFilters'
 import { productSearchKeys } from './queryKeys'
 import type { PublicProductFilters, PublicProductSort } from './types'
-
-const SEARCH_DEBOUNCE_MS = 300
 
 function parseSort(value: string | null): PublicProductSort {
   return value === 'price_asc' || value === 'price_desc' ? value : 'name'
@@ -40,10 +36,6 @@ export function SearchPage(): ReactElement {
   const sort = parseSort(searchParams.get('sort'))
   const page = parsePage(searchParams.get('page'))
 
-  const [searchInput, setSearchInput] = useState(search)
-  const [minPriceInput, setMinPriceInput] = useState(minPrice)
-  const [maxPriceInput, setMaxPriceInput] = useState(maxPrice)
-
   function updateParams(next: Record<string, string | null>) {
     setSearchParams(
       (previous) => {
@@ -63,38 +55,6 @@ export function SearchPage(): ReactElement {
     )
   }
 
-  // Keep the debounced inputs in sync when the URL changes externally, for
-  // example when the assistant opens /buscar with a different search term.
-  useEffect(() => {
-    setSearchInput(search)
-    setMinPriceInput(minPrice)
-    setMaxPriceInput(maxPrice)
-  }, [search, minPrice, maxPrice])
-
-  useEffect(() => {
-    const isUnchanged =
-      searchInput === search &&
-      minPriceInput === minPrice &&
-      maxPriceInput === maxPrice
-
-    if (isUnchanged) {
-      return
-    }
-
-    const timeout = window.setTimeout(() => {
-      updateParams({
-        search: searchInput,
-        min_price: minPriceInput,
-        max_price: maxPriceInput,
-        page: null,
-      })
-    }, SEARCH_DEBOUNCE_MS)
-
-    return () => window.clearTimeout(timeout)
-    // `updateParams` se recrea en cada render, pero solo depende del setter de la URL.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchInput, minPriceInput, maxPriceInput, search, minPrice, maxPrice])
-
   const filters: PublicProductFilters = {
     search,
     categoryId,
@@ -110,11 +70,8 @@ export function SearchPage(): ReactElement {
     queryFn: () => searchProducts(filters),
   })
 
-  const categoriesQuery = useQuery({
-    queryKey: productSearchKeys.categories,
-    queryFn: listPublicCategories,
-  })
-
+  // The header is the only search/filter surface. The page just renders the
+  // results for the URL parameters it receives.
   const data = productsQuery.data
   const totalPages = data ? Math.max(data.pages, 1) : 1
   const hasCriteria =
@@ -130,34 +87,8 @@ export function SearchPage(): ReactElement {
       : 'No se han podido cargar los productos. Inténtalo de nuevo más tarde.'
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-6 py-16">
-      <header className="space-y-2">
-        <p className="text-xs font-semibold tracking-wide text-indigo-600 uppercase">
-          Galería Comercial
-        </p>
-        <h1 className="text-3xl font-bold text-slate-900">Buscar productos</h1>
-        <p className="text-sm text-slate-600">
-          Encuentra productos de los locales de la galería por nombre, categoría o precio.
-        </p>
-      </header>
-
-      <SearchFilters
-        search={searchInput}
-        onSearchChange={setSearchInput}
-        categories={categoriesQuery.data ?? []}
-        categoryId={categoryId}
-        onCategoryChange={(value) => updateParams({ category: value, page: null })}
-        minPrice={minPriceInput}
-        onMinPriceChange={setMinPriceInput}
-        maxPrice={maxPriceInput}
-        onMaxPriceChange={setMaxPriceInput}
-        hasOffer={hasOffer}
-        onHasOfferChange={(value) =>
-          updateParams({ has_offer: value ? 'true' : null, page: null })
-        }
-        sort={sort}
-        onSortChange={(value) => updateParams({ sort: value, page: null })}
-      />
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-12">
+      <h1 className="text-2xl font-bold text-slate-900">Resultados</h1>
 
       {productsQuery.isPending ? (
         <p aria-live="polite" className="text-sm text-slate-600">

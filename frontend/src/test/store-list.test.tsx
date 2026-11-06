@@ -56,7 +56,7 @@ function renderStoreList() {
             path="/locales/:storeId"
             element={<h1>Ficha del local</h1>}
           />
-          <Route path="/explorar" element={<h1>Explorar</h1>} />
+          <Route path="/" element={<h1>Inicio</h1>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -139,6 +139,6 @@ describe('Listado público de locales', () => {
 
     expect(
       await screen.findByRole('link', { name: '← Volver a explorar' }),
-    ).toHaveAttribute('href', '/explorar')
+    ).toHaveAttribute('href', '/')
   })
 })

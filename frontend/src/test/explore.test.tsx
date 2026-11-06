@@ -1,29 +1,18 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { render, screen, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getExplore } from '../features/explore/api'
-import { ExplorePage } from '../features/explore/ExplorePage'
+import { ExploreContent } from '../features/explore/ExploreContent'
 import type { ExploreResponse } from '../features/explore/types'
-import {
-  listPublicCategories,
-  searchProducts,
-} from '../features/product-search/api'
-import { SearchPage } from '../features/product-search/SearchPage'
-import type {
-  PaginatedPublicProducts,
-  PublicCategory,
-  PublicProduct,
-} from '../features/product-search/types'
+import { HomePage } from '../pages/HomePage'
+import type { PublicCategory, PublicProduct } from '../features/product-search/types'
 import { ApiError } from '../lib/http'
 
 vi.mock('../features/explore/api')
 vi.mock('../features/product-search/api')
 
 const mockedGetExplore = vi.mocked(getExplore)
-const mockedSearchProducts = vi.mocked(searchProducts)
-const mockedListPublicCategories = vi.mocked(listPublicCategories)
-
 const CATEGORY: PublicCategory = { id: 1, name: 'Indumentaria' }
 
 const FEATURED_PRODUCT: PublicProduct = {
@@ -75,10 +64,6 @@ function buildExplore(overrides: Partial<ExploreResponse> = {}): ExploreResponse
   }
 }
 
-function emptyPage(): PaginatedPublicProducts {
-  return { items: [], total: 0, page: 1, page_size: 20, pages: 1 }
-}
-
 function createQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
@@ -90,42 +75,21 @@ function createQueryClient(): QueryClient {
   })
 }
 
-function LocationDisplay() {
-  const location = useLocation()
-  return <p data-testid="location">{location.search}</p>
-}
-
-function renderExplorePage() {
+function renderExploreContent() {
   return render(
     <QueryClientProvider client={createQueryClient()}>
-      <MemoryRouter initialEntries={['/explorar']}>
-        <Routes>
-          <Route path="/explorar" element={<ExplorePage />} />
-          <Route path="/buscar" element={<h1>Buscador</h1>} />
-          <Route path="/productos/:productId" element={<h1>Producto</h1>} />
-          <Route path="/locales/:storeId" element={<h1>Local</h1>} />
-          <Route path="/locales" element={<h1>Locales</h1>} />
-        </Routes>
+      <MemoryRouter initialEntries={['/']}>
+        <ExploreContent />
       </MemoryRouter>
     </QueryClientProvider>,
   )
 }
 
-function renderSearchPage(initialEntry = '/buscar') {
+function renderHomePage() {
   return render(
     <QueryClientProvider client={createQueryClient()}>
-      <MemoryRouter initialEntries={[initialEntry]}>
-        <Routes>
-          <Route
-            path="/buscar"
-            element={
-              <>
-                <SearchPage />
-                <LocationDisplay />
-              </>
-            }
-          />
-        </Routes>
+      <MemoryRouter initialEntries={['/']}>
+        <HomePage />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -134,17 +98,15 @@ function renderSearchPage(initialEntry = '/buscar') {
 beforeEach(() => {
   vi.clearAllMocks()
   mockedGetExplore.mockResolvedValue(buildExplore())
-  mockedSearchProducts.mockResolvedValue(emptyPage())
-  mockedListPublicCategories.mockResolvedValue([CATEGORY])
 })
 
 afterEach(() => {
   vi.clearAllMocks()
 })
 
-describe('Página de exploración', () => {
+describe('Contenido de exploración', () => {
   it('muestra destacados, ofertas, categorías y locales', async () => {
-    renderExplorePage()
+    renderExploreContent()
 
     expect(await screen.findByText('Campera destacada')).toBeInTheDocument()
     expect(
@@ -171,7 +133,7 @@ describe('Página de exploración', () => {
   })
 
   it('enlaza los productos a su detalle', async () => {
-    renderExplorePage()
+    renderExploreContent()
 
     const featured = await screen.findByText('Campera destacada')
     expect(featured.closest('a')).toHaveAttribute('href', '/productos/10')
@@ -181,7 +143,7 @@ describe('Página de exploración', () => {
   })
 
   it('enlaza a todas las ofertas con has_offer=true', async () => {
-    renderExplorePage()
+    renderExploreContent()
 
     expect(
       await screen.findByRole('link', { name: 'Ver todas las ofertas' }),
@@ -189,7 +151,7 @@ describe('Página de exploración', () => {
   })
 
   it('enlaza los productos y locales a sus listados completos', async () => {
-    renderExplorePage()
+    renderExploreContent()
 
     expect(
       await screen.findByRole('link', { name: 'Ver todos los productos' }),
@@ -200,7 +162,7 @@ describe('Página de exploración', () => {
   })
 
   it('enlaza cada categoría al buscador filtrado', async () => {
-    renderExplorePage()
+    renderExploreContent()
 
     const categoriesSection = (
       await screen.findByRole('heading', { name: 'Categorías' })
@@ -215,7 +177,7 @@ describe('Página de exploración', () => {
   })
 
   it('enlaza cada local a su ficha', async () => {
-    renderExplorePage()
+    renderExploreContent()
 
     await screen.findByText('Local Uno')
     const storesSection = screen
@@ -233,7 +195,7 @@ describe('Página de exploración', () => {
   it('muestra el estado de carga', () => {
     mockedGetExplore.mockReturnValue(new Promise<ExploreResponse>(() => {}))
 
-    renderExplorePage()
+    renderExploreContent()
 
     expect(screen.getByText('Cargando exploración…')).toBeInTheDocument()
   })
@@ -243,13 +205,13 @@ describe('Página de exploración', () => {
       new ApiError(500, 'No se pudo cargar la exploración.'),
     )
 
-    renderExplorePage()
+    renderExploreContent()
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(/no se ha podido cargar la exploración/i)
     expect(
-      screen.getByRole('heading', { name: 'Explora la galería' }),
-    ).toBeInTheDocument()
+      screen.queryByRole('heading', { name: 'Destacados' }),
+    ).not.toBeInTheDocument()
   })
 
   it('maneja secciones vacías sin romper la página', async () => {
@@ -257,7 +219,7 @@ describe('Página de exploración', () => {
       buildExplore({ featured: [], offers: [], categories: [], stores: [] }),
     )
 
-    renderExplorePage()
+    renderExploreContent()
 
     expect(
       await screen.findByText('Todavía no hay productos destacados.'),
@@ -270,41 +232,33 @@ describe('Página de exploración', () => {
   })
 })
 
-describe('Filtro de ofertas en el buscador', () => {
-  it('envía has_offer y actualiza la URL al marcar "Solo ofertas"', async () => {
-    renderSearchPage('/buscar?page=2')
+describe('Página principal', () => {
+  it('muestra el acceso destacado al mapa', async () => {
+    renderHomePage()
 
-    const checkbox = await screen.findByLabelText('Solo ofertas')
-    expect(checkbox).not.toBeChecked()
+    expect(
+      screen.getByRole('link', { name: 'Ver mapa de la galería' }),
+    ).toHaveAttribute('href', '/mapa')
 
-    fireEvent.click(checkbox)
-
-    await waitFor(() =>
-      expect(
-        mockedSearchProducts.mock.calls.some(
-          ([filters]) => filters.hasOffer === true && filters.page === 1,
-        ),
-      ).toBe(true),
-    )
-
-    await waitFor(() =>
-      expect(screen.getByTestId('location')).toHaveTextContent('has_offer=true'),
-    )
-    expect(screen.getByTestId('location')).not.toHaveTextContent('page=2')
+    await screen.findByText('Campera destacada')
   })
 
-  it('lee has_offer de la URL y marca el checkbox', async () => {
-    renderSearchPage('/buscar?has_offer=true')
+  it('muestra las secciones de exploración en la home', async () => {
+    renderHomePage()
 
-    const checkbox = await screen.findByLabelText('Solo ofertas')
-    expect(checkbox).toBeChecked()
+    expect(await screen.findByText('Campera destacada')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Destacados' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Ofertas' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Categorías' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Locales' })).toBeInTheDocument()
+  })
 
-    await waitFor(() =>
-      expect(
-        mockedSearchProducts.mock.calls.some(
-          ([filters]) => filters.hasOffer === true,
-        ),
-      ).toBe(true),
-    )
+  it('no muestra el estado técnico del backend', async () => {
+    renderHomePage()
+
+    await screen.findByText('Campera destacada')
+
+    expect(screen.queryByText(/comprobando el estado del backend/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/backend operativo/i)).not.toBeInTheDocument()
   })
 })

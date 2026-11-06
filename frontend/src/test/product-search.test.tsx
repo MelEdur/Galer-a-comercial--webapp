@@ -1,11 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  listPublicCategories,
-  searchProducts,
-} from '../features/product-search/api'
+import { searchProducts } from '../features/product-search/api'
 import { SearchPage } from '../features/product-search/SearchPage'
 import type {
   PaginatedPublicProducts,
@@ -17,7 +14,6 @@ import { ApiError } from '../lib/http'
 vi.mock('../features/product-search/api')
 
 const mockedSearchProducts = vi.mocked(searchProducts)
-const mockedListPublicCategories = vi.mocked(listPublicCategories)
 
 const CATEGORY: PublicCategory = { id: 1, name: 'Indumentaria' }
 
@@ -91,7 +87,6 @@ function renderSearchPage(initialEntry = '/buscar') {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockedListPublicCategories.mockResolvedValue([CATEGORY])
   mockedSearchProducts.mockResolvedValue(emptyPage())
 })
 
@@ -121,56 +116,28 @@ describe('Búsqueda pública de productos', () => {
     expect(screen.getByText('Oferta')).toBeInTheDocument()
   })
 
-  it('actualiza la petición al buscar por nombre con debounce', async () => {
-    renderSearchPage()
+  it('usa los filtros de la URL y no muestra controles en el cuerpo', async () => {
+    mockedSearchProducts.mockResolvedValue(pageOf([PLAIN_PRODUCT]))
 
-    fireEvent.change(await screen.findByLabelText('Buscar productos'), {
-      target: { value: 'reme' },
-    })
-
-    await waitFor(
-      () =>
-        expect(
-          mockedSearchProducts.mock.calls.some(([filters]) => filters.search === 'reme'),
-        ).toBe(true),
-      { timeout: 2000 },
-    )
-  })
-
-  it('filtra por categoría y por precio actualizando la petición', async () => {
-    renderSearchPage()
-
-    const categorySelect = await screen.findByLabelText('Categoría')
-    await screen.findByRole('option', { name: 'Indumentaria' })
-
-    fireEvent.change(categorySelect, { target: { value: '1' } })
-
-    await waitFor(
-      () =>
-        expect(
-          mockedSearchProducts.mock.calls.some(
-            ([filters]) => filters.categoryId === 1,
-          ),
-        ).toBe(true),
-      { timeout: 2000 },
+    renderSearchPage(
+      '/buscar?search=audio&category=1&min_price=100&max_price=500&has_offer=true&sort=price_asc&page=2',
     )
 
-    fireEvent.change(screen.getByLabelText('Precio mínimo'), {
-      target: { value: '100' },
-    })
-    fireEvent.change(screen.getByLabelText('Precio máximo'), {
-      target: { value: '500' },
-    })
-
-    await waitFor(
-      () =>
-        expect(
-          mockedSearchProducts.mock.calls.some(
-            ([filters]) => filters.minPrice === '100' && filters.maxPrice === '500',
-          ),
-        ).toBe(true),
-      { timeout: 2000 },
+    expect(await screen.findByText('Pantalón')).toBeInTheDocument()
+    expect(mockedSearchProducts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: 'audio',
+        categoryId: 1,
+        minPrice: '100',
+        maxPrice: '500',
+        hasOffer: true,
+        sort: 'price_asc',
+        page: 2,
+      }),
     )
+    expect(screen.queryByLabelText('Buscar productos')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Categoría')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Precio mínimo')).not.toBeInTheDocument()
   })
 
   it('muestra el estado vacío cuando el catálogo no tiene productos', async () => {
@@ -219,47 +186,6 @@ describe('Búsqueda pública de productos', () => {
         mockedSearchProducts.mock.calls.some(([filters]) => filters.page === 2),
       ).toBe(true),
     )
-  })
-
-  it('sincroniza el término cuando la URL cambia externamente', async () => {
-    function GoAudio() {
-      const navigate = useNavigate()
-      return (
-        <button type="button" onClick={() => navigate('/buscar?search=audio')}>
-          Ir a audio
-        </button>
-      )
-    }
-
-    render(
-      <QueryClientProvider client={createQueryClient()}>
-        <MemoryRouter initialEntries={['/buscar?search=zapatillas']}>
-          <GoAudio />
-          <Routes>
-            <Route path="/buscar" element={<SearchPage />} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>,
-    )
-
-    const input = await screen.findByLabelText('Buscar productos')
-    expect(input).toHaveValue('zapatillas')
-
-    fireEvent.click(screen.getByRole('button', { name: 'Ir a audio' }))
-
-    await waitFor(() => expect(input).toHaveValue('audio'))
-    await waitFor(
-      () =>
-        expect(
-          mockedSearchProducts.mock.calls.some(([filters]) => filters.search === 'audio'),
-        ).toBe(true),
-      { timeout: 2000 },
-    )
-
-    await new Promise((resolve) => setTimeout(resolve, 400))
-    expect(input).toHaveValue('audio')
-    const lastSearch = mockedSearchProducts.mock.calls.at(-1)?.[0].search
-    expect(lastSearch).toBe('audio')
   })
 
   it('sin filtros muestra el catálogo completo de la primera página', async () => {

@@ -27,7 +27,7 @@ export function StoreListPage(): ReactElement {
       </header>
 
       <Link
-        to="/explorar"
+        to="/"
         className="w-fit text-sm font-semibold text-indigo-600 hover:text-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
       >
         ← Volver a explorar

@@ -26,10 +26,7 @@ function ProductSection({
   return (
     <section aria-labelledby={`explore-${title}`} className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2
-          id={`explore-${title}`}
-          className="text-2xl font-bold text-slate-900"
-        >
+        <h2 id={`explore-${title}`} className="text-2xl font-bold text-slate-900">
           {title}
         </h2>
         {action ? (
@@ -57,7 +54,7 @@ function ProductSection({
   )
 }
 
-export function ExplorePage(): ReactElement {
+export function ExploreContent(): ReactElement {
   const exploreQuery = useQuery({
     queryKey: exploreKeys.explore,
     queryFn: getExplore,
@@ -66,20 +63,7 @@ export function ExplorePage(): ReactElement {
   const data = exploreQuery.data
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-12 px-6 py-16">
-      <header className="space-y-3">
-        <p className="text-xs font-semibold tracking-wide text-indigo-600 uppercase">
-          Galería Comercial
-        </p>
-        <h1 className="text-3xl font-bold text-slate-900 sm:text-4xl">
-          Explora la galería
-        </h1>
-        <p className="max-w-2xl text-base text-slate-600">
-          Descubre productos destacados, ofertas, categorías y los locales de la
-          galería.
-        </p>
-      </header>
-
+    <>
       {exploreQuery.isPending ? (
         <p aria-live="polite" className="text-sm text-slate-600">
           Cargando exploración…
@@ -112,10 +96,7 @@ export function ExplorePage(): ReactElement {
           />
 
           <section aria-labelledby="explore-categories" className="space-y-4">
-            <h2
-              id="explore-categories"
-              className="text-2xl font-bold text-slate-900"
-            >
+            <h2 id="explore-categories" className="text-2xl font-bold text-slate-900">
               Categorías
             </h2>
 
@@ -134,10 +115,7 @@ export function ExplorePage(): ReactElement {
 
           <section aria-labelledby="explore-stores" className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2
-                id="explore-stores"
-                className="text-2xl font-bold text-slate-900"
-              >
+              <h2 id="explore-stores" className="text-2xl font-bold text-slate-900">
                 Locales
               </h2>
               <Link
@@ -162,6 +140,6 @@ export function ExplorePage(): ReactElement {
           </section>
         </>
       ) : null}
-    </main>
+    </>
   )
 }
