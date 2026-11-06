@@ -191,7 +191,9 @@ Para poblar la galería con comerciantes, información de locales y productos:
 docker compose exec backend python -m scripts.seed_demo
 ```
 
-El script requiere que existan los locales y las categorías. Crea un comerciante por local, completa nombre, descripción, logo, contacto, horarios y enlaces de los 21 locales, y agrega tres productos por local. Es idempotente: una segunda ejecución actualiza los datos demo sin duplicar comerciantes ni productos.
+El script requiere que existan los locales y las categorías. Crea un comerciante por local, completa nombre, descripción, logo, contacto, horarios y enlaces de los 21 locales, y agrega 20 productos por local: tres productos curados y 17 variantes deterministas generadas a partir de las categorías del local. En total quedan 420 productos, cada uno con dos imágenes. Es idempotente: una segunda ejecución actualiza los datos demo sin duplicar comerciantes ni productos.
+
+> **Aviso:** los datos de la galería, sus comercios y sus productos son ficticios y se usan únicamente con fines de demostración.
 
 Credenciales de los comerciantes demo:
 

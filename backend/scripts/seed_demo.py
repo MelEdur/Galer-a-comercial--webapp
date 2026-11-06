@@ -5,9 +5,10 @@ Run from ``backend/`` with::
     python -m scripts.seed_demo
 
 It creates one merchant per store, fills the store public information
-(description, logo, contact, hours and links) and adds a small catalog per
-store. Running it again updates the demo stores and products instead of
-duplicating them.
+(description, logo, contact, hours and links) and adds a catalog of 20
+products per store: three curated products plus 17 deterministic variants
+generated from the store categories. Running it again updates the demo stores
+and products instead of duplicating them.
 
 Demo merchant accounts use the same password: ``comercio1234``.
 """
@@ -17,7 +18,8 @@ from __future__ import annotations
 import re
 import unicodedata
 from datetime import time
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
+from functools import lru_cache
 from urllib.parse import quote_plus
 
 from sqlalchemy import select
@@ -294,6 +296,289 @@ STORES: list[dict[str, object]] = [
     },
 ]
 
+# --- Deterministic extra catalog -------------------------------------------
+#
+# Every store keeps its three curated products and receives 17 extra products
+# generated from its commercial categories. Each category defines five base
+# products and six variants (30 candidates). The selection is deterministic so
+# repeated runs upsert the same names instead of creating new ones.
+
+EXTRAS_PER_STORE = 17
+OFFER_EVERY = 3  # one extra out of three gets an offer price
+OFFER_FACTOR = Decimal("0.85")
+VARIANT_PRICE_FACTORS = (
+    Decimal("1.00"),
+    Decimal("1.08"),
+    Decimal("1.04"),
+    Decimal("0.94"),
+    Decimal("1.15"),
+    Decimal("1.22"),
+)
+
+# (base name, description, base price)
+BaseProduct = tuple[str, str, str]
+
+CATEGORY_BASES: dict[str, tuple[BaseProduct, ...]] = {
+    "Indumentaria": (
+        ("Remera algodón", "Algodón peinado, corte regular.", "14500.00"),
+        ("Buzo canguro", "Frisa liviana con capucha.", "27900.00"),
+        ("Pantalón jogger", "Elástico en cintura y puños.", "24900.00"),
+        ("Camisa de lino", "Tela liviana y calce holgado.", "31900.00"),
+        ("Campera liviana", "Cierre frontal y bolsillos laterales.", "45900.00"),
+    ),
+    "Calzado": (
+        ("Zapatilla urbana", "Suela de goma y capellada de lona.", "58900.00"),
+        ("Zapatilla de running", "Amortiguación media y malla transpirable.", "74900.00"),
+        ("Bota de cuero", "Cuero vacuno y suela antideslizante.", "94900.00"),
+        ("Sandalia de verano", "Plantilla acolchada y tiras ajustables.", "23900.00"),
+        ("Zapatilla de lona", "Corte clásico con cordones.", "42900.00"),
+    ),
+    "Accesorios": (
+        ("Cartera", "Cuero sintético con correa ajustable.", "38900.00"),
+        ("Mochila", "Dos compartimentos y espalda acolchada.", "31900.00"),
+        ("Cinturón", "Hebilla metálica y tira de cuero.", "17900.00"),
+        ("Gorro de punto", "Tejido grueso con puño doble.", "9900.00"),
+        ("Reloj", "Malla de acero y esfera simple.", "45900.00"),
+    ),
+    "Belleza": (
+        ("Crema facial", "Hidratación diaria con aloe vera.", "17900.00"),
+        ("Sérum facial", "Ácido hialurónico y vitamina C.", "24900.00"),
+        ("Labial", "Larga duración con acabado mate.", "8900.00"),
+        ("Máscara de pestañas", "Volumen y curva duradera.", "12900.00"),
+        ("Perfume", "Fragancia floral con notas cítricas.", "42900.00"),
+    ),
+    "Tecnología": (
+        ("Auriculares Bluetooth", "Cancelación de ruido y batería extendida.", "39900.00"),
+        ("Cargador rápido", "Carga USB-C de alta potencia.", "14900.00"),
+        ("Parlante portátil", "Resistente al agua y conexión inalámbrica.", "32900.00"),
+        ("Mouse inalámbrico", "Sensor óptico y diseño ergonómico.", "17900.00"),
+        ("Teclado compacto", "Teclas silenciosas y perfil bajo.", "42900.00"),
+    ),
+    "Hogar": (
+        ("Juego de toallas", "Algodón absorbente de 500 g.", "22900.00"),
+        ("Lámpara de mesa", "Base de madera y pantalla de lino.", "31900.00"),
+        ("Set de tazas", "Cuatro tazas de cerámica esmaltada.", "14900.00"),
+        ("Organizador", "Tres niveles apilables.", "12900.00"),
+        ("Almohadón", "Funda removible y relleno siliconado.", "9900.00"),
+    ),
+    "Deportes": (
+        ("Pelota de fútbol", "Costura reforzada y número 5.", "22900.00"),
+        ("Mancuerna", "Recubrimiento antideslizante de 5 kg.", "34900.00"),
+        ("Botella deportiva", "Un litro, libre de BPA.", "8900.00"),
+        ("Banda elástica", "Resistencia progresiva para entrenar.", "7900.00"),
+        ("Colchoneta", "Superficie antideslizante y enrollable.", "18900.00"),
+    ),
+    "Juguetería": (
+        ("Peluche", "Tela extra suave de 40 cm.", "17900.00"),
+        ("Set de bloques", "120 piezas de construcción.", "29900.00"),
+        ("Auto a control remoto", "Tracción 4x4 y batería recargable.", "42900.00"),
+        ("Rompecabezas", "500 piezas con piezas grandes.", "14900.00"),
+        ("Juego de mesa", "Partidas de 30 a 60 minutos.", "23900.00"),
+    ),
+    "Librería": (
+        ("Novela contemporánea", "Última edición en tapa blanda.", "17900.00"),
+        ("Cuaderno rayado", "Hojas de 80 g y tapa dura.", "4900.00"),
+        ("Agenda semanal", "Formato A5 con separadores.", "11900.00"),
+        ("Libro infantil", "Ilustraciones a color y letra grande.", "13900.00"),
+        ("Set de bolígrafos", "Cuatro colores con punta fina.", "5900.00"),
+    ),
+    "Gastronomía": (
+        ("Café de especialidad", "Grano tostado y molienda fresca.", "3200.00"),
+        ("Capuchino", "Espresso, leche y espuma cremosa.", "3800.00"),
+        ("Sándwich tostado", "Pan ciabatta con relleno del día.", "5200.00"),
+        ("Porción de torta", "Bizcochuelo húmedo y ganache.", "4800.00"),
+        ("Jugo natural", "Fruta exprimida al momento.", "2900.00"),
+    ),
+}
+
+CATEGORY_VARIANTS: dict[str, tuple[str, ...]] = {
+    "Indumentaria": (
+        "en negro",
+        "en blanco",
+        "en azul",
+        "en gris",
+        "en beige",
+        "en verde oliva",
+    ),
+    "Calzado": (
+        "talle 37",
+        "talle 38",
+        "talle 39",
+        "talle 40",
+        "talle 41",
+        "talle 42",
+    ),
+    "Accesorios": (
+        "en negro",
+        "en marfil",
+        "en azul marino",
+        "en bordó",
+        "en dorado",
+        "en plateado",
+    ),
+    "Belleza": (
+        "clásico",
+        "intenso",
+        "suave",
+        "mini",
+        "pack x2",
+        "edición limitada",
+    ),
+    "Tecnología": (
+        "básico",
+        "plus",
+        "pro",
+        "mini",
+        "max",
+        "edición gamer",
+    ),
+    "Hogar": (
+        "en natural",
+        "en blanco",
+        "en gris",
+        "en arena",
+        "en verde",
+        "en terracota",
+    ),
+    "Deportes": (
+        "nivel inicial",
+        "nivel intermedio",
+        "nivel avanzado",
+        "formato compacto",
+        "línea pro",
+        "línea premium",
+    ),
+    "Juguetería": (
+        "clásico",
+        "mini",
+        "deluxe",
+        "pack x2",
+        "coleccionable",
+        "edición color",
+    ),
+    "Librería": (
+        "edición básica",
+        "edición premium",
+        "formato bolsillo",
+        "formato A4",
+        "pack x2",
+        "edición ilustrada",
+    ),
+    "Gastronomía": (
+        "individual",
+        "doble",
+        "grande",
+        "familiar",
+        "para llevar",
+        "combo",
+    ),
+}
+
+
+def _round_price(value: Decimal) -> Decimal:
+    """Round a price to the nearest hundred pesos."""
+    hundreds = (value / 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return hundreds * 100
+
+
+@lru_cache(maxsize=None)
+def _category_candidates(category_name: str) -> tuple[tuple[str, str, str], ...]:
+    """Return the 30 deterministic candidates of a category."""
+    bases = CATEGORY_BASES.get(category_name)
+    variants = CATEGORY_VARIANTS.get(category_name)
+    if not bases or not variants:
+        return ()
+
+    candidates: list[tuple[str, str, str]] = []
+    for base_name, description, base_price in bases:
+        price = Decimal(base_price)
+        for index, variant in enumerate(variants):
+            candidate_price = _round_price(price * VARIANT_PRICE_FACTORS[index])
+            candidates.append(
+                (
+                    f"{base_name} {variant}",
+                    f"{description} Variante: {variant}.",
+                    f"{candidate_price:.2f}",
+                )
+            )
+    return tuple(candidates)
+
+
+def _store_category_names(specs: list[ProductSpec]) -> list[str]:
+    """Return the distinct categories of the curated products, in order."""
+    names: list[str] = []
+    for spec in specs:
+        for category_name in spec[4]:
+            if category_name not in names:
+                names.append(category_name)
+    return names
+
+
+def _extras_for_store(
+    number: int,
+    existing_names: set[str],
+    category_names: list[str],
+) -> list[ProductSpec]:
+    """Build 17 deterministic extra products alternating store categories."""
+    catalogs = {
+        category: _category_candidates(category)
+        for category in category_names
+        if _category_candidates(category)
+    }
+    ordered = list(catalogs)
+    if not ordered:
+        return []
+
+    # Different stores start at different offsets to avoid identical catalogs.
+    cursors = {
+        category: ((number - 1) * 7 + index * 11) % len(catalogs[category])
+        for index, category in enumerate(ordered)
+    }
+    used = set(existing_names)
+    extras: list[ProductSpec] = []
+    pick = 0
+    attempts = 0
+
+    while len(extras) < EXTRAS_PER_STORE and attempts < 1000:
+        category = ordered[pick % len(ordered)]
+        pick += 1
+        attempts += 1
+
+        candidates = catalogs[category]
+        cursor = cursors[category]
+        chosen: tuple[str, str, str] | None = None
+        for _ in range(len(candidates)):
+            name, description, price = candidates[cursor % len(candidates)]
+            cursor += 1
+            if name not in used:
+                chosen = (name, description, price)
+                break
+        cursors[category] = cursor
+        if chosen is None:
+            continue
+
+        name, description, price = chosen
+        used.add(name)
+        price_value = Decimal(price)
+        offer: Decimal | None = None
+        if len(extras) % OFFER_EVERY == 1:
+            discounted = _round_price(price_value * OFFER_FACTOR)
+            if discounted < price_value:
+                offer = discounted
+
+        extras.append(
+            (
+                name,
+                description,
+                f"{price_value:.2f}",
+                f"{offer:.2f}" if offer is not None else None,
+                [category],
+            )
+        )
+
+    return extras
+
+
 SHOP_HOURS = [
     (0, "10:00", "20:00"),
     (1, "10:00", "20:00"),
@@ -484,6 +769,21 @@ def seed_demo() -> dict[str, int]:
                 summary["merchants"] += 1
 
             for product_spec in data["products"]:
+                created, updated = _upsert_product(
+                    session, store, product_spec, categories
+                )
+                if created:
+                    summary["products"] += 1
+                if updated:
+                    summary["updated"] += 1
+
+            curated_specs = list(data["products"])
+            extras = _extras_for_store(
+                number,
+                {spec[0] for spec in curated_specs},
+                _store_category_names(curated_specs),
+            )
+            for product_spec in extras:
                 created, updated = _upsert_product(
                     session, store, product_spec, categories
                 )

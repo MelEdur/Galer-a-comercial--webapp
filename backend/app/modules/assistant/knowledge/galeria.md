@@ -2,11 +2,15 @@
 
 ## Qué es la galería
 
+La galería está en Av. Corrientes 1234, Ciudad Autónoma de Buenos Aires. Su horario general es de lunes a sábado de 10:00 a 21:00 y domingo de 11:00 a 19:00.
+
 La galería comercial es un espacio con 21 locales organizados en dos lados y un fondo. Reúne locales de rubros variados —indumentaria, calzado, accesorios, belleza, tecnología, hogar, deportes, juguetería, librería y gastronomía— en un mismo lugar.
 
 Esta aplicación web es una guía para visitantes: permite descubrir los locales, explorar sus productos, buscar artículos concretos y ubicar cada local en un mapa esquemático.
 
 La aplicación no procesa compras ni reservas. Tampoco permite modificar datos de los locales desde la vista pública: esa gestión corresponde a cada comerciante desde su panel.
+
+Los datos de la galería, de los locales y de sus productos son ficticios y se usan solo con fines de demostración.
 
 ## Cómo usar el buscador
 
@@ -53,13 +57,24 @@ Los números de local van del 1 al 21:
 
 El número de local y la posición dentro del lado no son lo mismo. Por ejemplo, el Local 2 está en el lado izquierdo, posición 1, y el Local 3 está en el lado derecho, posición 2. La ficha de cada local y el mapa muestran el lado y la posición reales.
 
-Esa numeración describe la ubicación relativa de cada local dentro de la galería. La aplicación no publica una dirección ni un plano con la entrada, así que no conviene suponer por dónde se ingresa.
+Esa numeración describe la ubicación relativa de cada local dentro de la galería. La dirección del edificio se indica en la sección de ubicación y horarios.
+
+## Ubicación y horarios
+
+La galería está en **Av. Corrientes 1234, Ciudad Autónoma de Buenos Aires**.
+
+El horario general del edificio es:
+
+- **Lunes a sábado:** de 10:00 a 21:00.
+- **Domingo:** de 11:00 a 19:00.
+
+Cada local puede publicar horarios propios, que pueden ser distintos del horario general de la galería. Los horarios de cada local aparecen en su ficha.
 
 ## Cómo usar el mapa
 
 La ruta `/mapa` muestra un esquema de la galería con los locales ubicados por lado y posición. Sirve para orientarse y reconocer qué locales están cerca entre sí.
 
-El mapa es esquemático: no incluye coordenadas reales ni indicaciones para llegar desde el exterior. Para consultar los datos de un local conviene abrir su ficha desde la lista de locales o desde el propio mapa.
+El mapa es esquemático: muestra la ubicación relativa de los locales dentro de la galería, pero no reemplaza un plano con la entrada ni indicaciones para llegar desde el exterior. Para consultar los datos de un local conviene abrir su ficha desde la lista de locales o desde el propio mapa.
 
 ## Ofertas y precios
 
@@ -67,11 +82,35 @@ La aplicación muestra el precio publicado de cada producto y, cuando existe, un
 
 Los precios son informativos y corresponden a lo publicado por cada comerciante. La aplicación no gestiona pagos ni reservas.
 
+## Administración
+
+La administración de la galería atiende consultas generales del edificio, de los servicios y de los locales.
+
+- **Correo electrónico:** administracion@galeriacentral.com.ar
+- **Teléfono:** +54 11 5555-0100
+
+La administración no recibe pedidos de productos ni gestiona compras: esas consultas se coordinan con cada local.
+
+## Servicios de la galería
+
+La galería ofrece los siguientes servicios para visitantes:
+
+- **Estacionamiento:** espacio para estacionar dentro del edificio.
+- **Accesibilidad:** accesos y circulación adaptados.
+- **Baños:** baños disponibles para visitantes.
+- **Cajero automático:** extracción de efectivo dentro de la galería.
+- **WiFi:** conexión inalámbrica para visitantes.
+- **Patio de comidas:** espacio común para comer y descansar.
+- **Seguridad:** personal y monitoreo en el edificio.
+- **Objetos perdidos:** recepción y consulta de objetos extraviados.
+
+Las consultas sobre objetos perdidos se pueden hacer en administración.
+
 ## Contacto con los locales
 
 Cada local puede publicar teléfono, WhatsApp, correo electrónico y enlaces a sitios o redes sociales. Esos datos aparecen en la ficha del local.
 
-La aplicación no dispone de un canal de contacto de administración de la galería. La dirección, los horarios generales del edificio y los datos de administración no están publicados en la aplicación.
+Para consultas generales del edificio, la dirección, los horarios generales y los servicios, la información de administración es el canal correspondiente.
 
 ## Preguntas frecuentes
 
@@ -83,15 +122,19 @@ La aplicación no dispone de un canal de contacto de administración de la galer
 
 **¿Puedo ver el stock o la disponibilidad?** No. La aplicación no publica stock ni disponibilidad en tiempo real.
 
-**¿Cómo llego a la galería?** La aplicación no incluye dirección ni indicaciones de acceso. El mapa muestra la ubicación relativa de los locales dentro de la galería.
+**¿Dónde queda la galería?** En Av. Corrientes 1234, Ciudad Autónoma de Buenos Aires.
 
-**¿Los horarios que aparecen son los de la galería?** Los horarios publicados corresponden a cada local. Los horarios generales del edificio no están disponibles en la aplicación.
+**¿Cuál es el horario de la galería?** De lunes a sábado de 10:00 a 21:00 y domingo de 11:00 a 19:00. Cada local puede tener horarios propios publicados en su ficha.
 
 **¿Cómo contacto a un local?** En la ficha de cada local se muestran los datos de contacto y enlaces que el comerciante haya publicado.
 
+**¿Cómo contacto a la administración?** Por correo a administracion@galeriacentral.com.ar o por teléfono al +54 11 5555-0100.
+
+**¿Qué servicios tiene la galería?** Estacionamiento, accesibilidad, baños, cajero automático, WiFi, patio de comidas, seguridad y objetos perdidos.
+
 ## Alcance del asistente
 
-Este asistente responde consultas informativas sobre la galería, sus locales, sus categorías y el uso de la aplicación.
+Este asistente responde consultas informativas sobre la galería, sus locales, sus categorías, sus servicios y el uso de la aplicación.
 
 No busca productos, no consulta precios, no verifica stock y no identifica locales que vendan un artículo específico. Para eso existe el buscador de la aplicación. Tampoco puede modificar datos ni realizar compras o reservas.
 
