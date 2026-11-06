@@ -408,6 +408,60 @@ def list_products(
     return result
 
 
+def list_store_products(
+    session: Session,
+    store_id: int,
+    *,
+    page: int,
+    page_size: int,
+) -> PaginatedPublicProducts:
+    """Return one page of the available products of a single active store.
+
+    Unlike the search, this endpoint never records search events: it is a
+    catalog listing, not a visitor query.
+
+    Raises:
+        StoreNotFoundError: if the store is missing or inactive.
+    """
+    store = session.scalars(
+        select(Store).where(Store.id == store_id, Store.is_active.is_(True))
+    ).first()
+    if store is None:
+        raise StoreNotFoundError("Local no encontrado.")
+
+    conditions = [*_base_conditions(), Product.store_id == store_id]
+
+    total = (
+        session.scalar(
+            select(func.count())
+            .select_from(Product)
+            .join(Store, Product.store_id == Store.id)
+            .where(*conditions)
+        )
+        or 0
+    )
+
+    products = list(
+        session.scalars(
+            select(Product)
+            .join(Store, Product.store_id == Store.id)
+            .where(*conditions)
+            .options(*_detail_options())
+            .order_by(func.lower(Product.name), Product.id)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).all()
+    )
+
+    return PaginatedPublicProducts(
+        items=[_to_read(product) for product in products],
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=(total + page_size - 1) // page_size,
+    )
+
+
 def list_categories(session: Session) -> list[PublicCategory]:
     """Return every global category ordered by name."""
     rows = session.scalars(

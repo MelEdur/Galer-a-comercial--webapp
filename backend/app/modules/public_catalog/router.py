@@ -29,6 +29,7 @@ from app.modules.public_catalog.service import (
     list_products,
     list_public_stores,
     list_similar_products,
+    list_store_products,
 )
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -180,6 +181,36 @@ def get_public_store(
     """Return the store profile with its hours, contact data and links."""
     try:
         return get_store_profile(db, store_id)
+    except StoreNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from None
+
+
+@router.get(
+    "/stores/{store_id}/products",
+    response_model=PaginatedPublicProducts,
+    summary="List the available products of a store",
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Store not available."},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": (
+                "The store identifier is not numeric or the pagination values "
+                "are out of range."
+            )
+        },
+    },
+)
+def get_public_store_products(
+    store_id: int,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=12, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> PaginatedPublicProducts:
+    """Return one page of the store's available products ordered by name."""
+    try:
+        return list_store_products(db, store_id, page=page, page_size=page_size)
     except StoreNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

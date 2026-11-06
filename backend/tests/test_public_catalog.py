@@ -1745,3 +1745,201 @@ def test_map_does_not_expose_internal_data_or_products(
     assert "accounts" not in lowered
     assert "merchants" not in lowered
     assert "password" not in lowered
+
+
+# --- Store catalog (store-catalog-and-back) --------------------------------
+
+
+def _store_products_url(store_id: int) -> str:
+    return f"{STORES_URL}/{store_id}/products"
+
+
+def test_store_catalog_without_token_returns_expected_contract(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    categories: list[Category],
+) -> None:
+    _add_product(
+        db_session,
+        store,
+        name="Remera",
+        description="Algodón",
+        price="1500.00",
+        offer_price="1200.00",
+        categories=(categories[0],),
+        image_urls=("https://example.com/remera.jpg",),
+    )
+
+    response = api_client.get(_store_products_url(store.id))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"items", "total", "page", "page_size", "pages"}
+    assert body["total"] == 1
+    assert body["page"] == 1
+    assert body["page_size"] == 12
+    assert body["pages"] == 1
+
+    item = body["items"][0]
+    assert set(item) == {
+        "id",
+        "name",
+        "description",
+        "price",
+        "offer_price",
+        "effective_price",
+        "categories",
+        "primary_image",
+        "store",
+    }
+    assert item["name"] == "Remera"
+    assert item["description"] == "Algodón"
+    assert item["price"] == "1500.00"
+    assert item["offer_price"] == "1200.00"
+    assert item["effective_price"] == "1200.00"
+    assert item["categories"] == [
+        {"id": categories[0].id, "name": categories[0].name}
+    ]
+    assert item["primary_image"] == {
+        "url": "https://example.com/remera.jpg",
+        "alt_text": None,
+    }
+    assert item["store"] == {"id": store.id, "number": 1, "name": "Local 1"}
+    assert "store_id" not in item
+    assert "is_active" not in item
+    assert "deleted_at" not in item
+    assert "password" not in response.text.lower()
+
+
+def test_store_catalog_paginates(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    for letter in "ABCDE":
+        _add_product(db_session, store, name=f"Producto {letter}")
+
+    response = api_client.get(
+        _store_products_url(store.id), params={"page": 2, "page_size": 2}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["name"] for item in body["items"]] == [
+        "Producto C",
+        "Producto D",
+    ]
+    assert body["total"] == 5
+    assert body["page"] == 2
+    assert body["page_size"] == 2
+    assert body["pages"] == 3
+
+
+def test_store_catalog_orders_by_name_case_insensitive(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    _add_product(db_session, store, name="Zapato")
+    _add_product(db_session, store, name="camisa")
+    _add_product(db_session, store, name="Bufanda")
+
+    response = api_client.get(_store_products_url(store.id))
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()["items"]] == [
+        "Bufanda",
+        "camisa",
+        "Zapato",
+    ]
+
+
+def test_store_catalog_excludes_unavailable_and_other_store_products(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    other_store: Store,
+) -> None:
+    _add_product(db_session, store, name="Disponible")
+    _add_product(db_session, store, name="Eliminado", deleted=True)
+    _add_product(db_session, store, name="Inactivo", is_active=False)
+    _add_product(db_session, other_store, name="Otro local")
+
+    response = api_client.get(_store_products_url(store.id))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert [item["name"] for item in body["items"]] == ["Disponible"]
+
+
+def test_store_catalog_is_empty_without_available_products(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    _add_product(db_session, store, name="Eliminado", deleted=True)
+
+    response = api_client.get(_store_products_url(store.id))
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [],
+        "total": 0,
+        "page": 1,
+        "page_size": 12,
+        "pages": 0,
+    }
+
+
+def test_store_catalog_404_for_inactive_and_unknown_store(
+    api_client: TestClient,
+    db_session: Session,
+    inactive_store: Store,
+) -> None:
+    _add_product(db_session, inactive_store, name="Producto oculto")
+
+    for store_id in (inactive_store.id, 999999):
+        response = api_client.get(_store_products_url(store_id))
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Local no encontrado."
+
+
+def test_store_catalog_non_numeric_id_returns_422(
+    api_client: TestClient,
+) -> None:
+    response = api_client.get(f"{STORES_URL}/abc/products")
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "params", [{"page": 0}, {"page_size": 0}, {"page_size": 101}]
+)
+def test_store_catalog_pagination_rejects_out_of_range_values(
+    api_client: TestClient,
+    store: Store,
+    params: dict,
+) -> None:
+    response = api_client.get(_store_products_url(store.id), params=params)
+
+    assert response.status_code == 422
+
+
+def test_store_catalog_records_no_search_events(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    for index in range(3):
+        _add_product(db_session, store, name=f"Producto {index}")
+
+    response = api_client.get(
+        _store_products_url(store.id), params={"page_size": 2}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 3
+    assert _event_count(db_session) == 0

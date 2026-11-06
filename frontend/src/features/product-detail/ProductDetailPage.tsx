@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError } from '../../lib/http'
+import { useGoBack } from '../../lib/useGoBack'
 import { formatPrice } from '../product-search/format'
 import { getProductDetail, getSimilarProducts } from './api'
 import { ProductGallery } from './ProductGallery'
@@ -10,6 +11,7 @@ import { SimilarProducts } from './SimilarProducts'
 
 export function ProductDetailPage(): ReactElement {
   const { productId = '' } = useParams()
+  const goBack = useGoBack()
 
   const detailQuery = useQuery({
     queryKey: productDetailKeys.detail(productId),
@@ -33,12 +35,14 @@ export function ProductDetailPage(): ReactElement {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-6 py-16">
-      <Link
-        to="/buscar"
+      <button
+        type="button"
+        onClick={goBack}
+        aria-label="Volver"
         className="w-fit text-sm font-semibold text-indigo-600 hover:text-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
       >
-        ← Volver a la búsqueda
-      </Link>
+        ← Volver
+      </button>
 
       {detailQuery.isPending ? (
         <p aria-live="polite" className="text-sm text-slate-600">

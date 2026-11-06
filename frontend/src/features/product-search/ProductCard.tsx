@@ -5,9 +5,13 @@ import type { PublicProduct } from './types'
 
 interface ProductCardProps {
   product: PublicProduct
+  showStore?: boolean
 }
 
-export function ProductCard({ product }: ProductCardProps): ReactElement {
+export function ProductCard({
+  product,
+  showStore = true,
+}: ProductCardProps): ReactElement {
   const hasOffer = product.offer_price !== null
 
   return (
@@ -69,9 +73,11 @@ export function ProductCard({ product }: ProductCardProps): ReactElement {
             </ul>
           ) : null}
 
-          <p className="mt-auto text-sm text-slate-500">
-            Local {product.store.number} · {product.store.name}
-          </p>
+          {showStore ? (
+            <p className="mt-auto text-sm text-slate-500">
+              Local {product.store.number} · {product.store.name}
+            </p>
+          ) : null}
         </div>
       </article>
     </Link>

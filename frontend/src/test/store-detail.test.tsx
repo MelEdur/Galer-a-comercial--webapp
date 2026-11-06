@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -8,7 +8,14 @@ import {
 } from '../features/product-detail/api'
 import { ProductDetailPage } from '../features/product-detail/ProductDetailPage'
 import type { ProductDetail } from '../features/product-detail/types'
-import { getStoreDetail } from '../features/store-detail/api'
+import type {
+  PaginatedPublicProducts,
+  PublicProduct,
+} from '../features/product-search/types'
+import {
+  getStoreDetail,
+  listStoreProducts,
+} from '../features/store-detail/api'
 import { StoreDetailPage } from '../features/store-detail/StoreDetailPage'
 import type { StoreDetail } from '../features/store-detail/types'
 import { ApiError } from '../lib/http'
@@ -17,6 +24,7 @@ vi.mock('../features/store-detail/api')
 vi.mock('../features/product-detail/api')
 
 const mockedGetStoreDetail = vi.mocked(getStoreDetail)
+const mockedListStoreProducts = vi.mocked(listStoreProducts)
 const mockedGetProductDetail = vi.mocked(getProductDetail)
 const mockedGetSimilarProducts = vi.mocked(getSimilarProducts)
 
@@ -51,6 +59,26 @@ const MINIMAL_STORE: StoreDetail = {
   whatsapp: null,
   hours: [],
   links: [],
+}
+
+const CATALOG_PRODUCT: PublicProduct = {
+  id: 11,
+  name: 'Zapatilla',
+  description: 'Cuero',
+  price: '100.00',
+  offer_price: null,
+  effective_price: '100.00',
+  categories: [{ id: 1, name: 'Calzado' }],
+  primary_image: null,
+  store: { id: 1, number: 2, name: 'Local 2' },
+}
+
+const EMPTY_PRODUCTS: PaginatedPublicProducts = {
+  items: [],
+  total: 0,
+  page: 1,
+  page_size: 12,
+  pages: 0,
 }
 
 const PRODUCT_DETAIL: ProductDetail = {
@@ -89,6 +117,21 @@ function renderStorePage(storeId = '1') {
     <QueryClientProvider client={createQueryClient()}>
       <MemoryRouter initialEntries={[`/locales/${storeId}`]}>
         <Routes>
+          <Route path="/" element={<h1>Inicio</h1>} />
+          <Route path="/locales/:storeId" element={<StoreDetailPage />} />
+          <Route path="/buscar" element={<h1>Buscador</h1>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+function renderStorePageHistory(initialEntries: string[], initialIndex = 0) {
+  return render(
+    <QueryClientProvider client={createQueryClient()}>
+      <MemoryRouter initialEntries={initialEntries} initialIndex={initialIndex}>
+        <Routes>
+          <Route path="/" element={<h1>Inicio</h1>} />
           <Route path="/locales/:storeId" element={<StoreDetailPage />} />
           <Route path="/buscar" element={<h1>Buscador</h1>} />
         </Routes>
@@ -102,6 +145,25 @@ function renderProductDetailPage(productId = '7') {
     <QueryClientProvider client={createQueryClient()}>
       <MemoryRouter initialEntries={[`/productos/${productId}`]}>
         <Routes>
+          <Route path="/" element={<h1>Inicio</h1>} />
+          <Route path="/productos/:productId" element={<ProductDetailPage />} />
+          <Route path="/locales/:storeId" element={<h1>Ficha del local</h1>} />
+          <Route path="/buscar" element={<h1>Buscador</h1>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+function renderProductDetailPageHistory(
+  initialEntries: string[],
+  initialIndex = 0,
+) {
+  return render(
+    <QueryClientProvider client={createQueryClient()}>
+      <MemoryRouter initialEntries={initialEntries} initialIndex={initialIndex}>
+        <Routes>
+          <Route path="/" element={<h1>Inicio</h1>} />
           <Route path="/productos/:productId" element={<ProductDetailPage />} />
           <Route path="/locales/:storeId" element={<h1>Ficha del local</h1>} />
           <Route path="/buscar" element={<h1>Buscador</h1>} />
@@ -114,6 +176,7 @@ function renderProductDetailPage(productId = '7') {
 beforeEach(() => {
   vi.clearAllMocks()
   mockedGetStoreDetail.mockResolvedValue(FULL_STORE)
+  mockedListStoreProducts.mockResolvedValue(EMPTY_PRODUCTS)
   mockedGetProductDetail.mockResolvedValue(PRODUCT_DETAIL)
   mockedGetSimilarProducts.mockResolvedValue({ items: [] })
 })
@@ -255,5 +318,212 @@ describe('Integración con el detalle de producto', () => {
 
     const storeLink = screen.getByRole('link', { name: 'Boutique Centro' })
     expect(storeLink).toHaveAttribute('href', '/locales/1')
+  })
+})
+
+describe('Catálogo del local', () => {
+  it('muestra el catálogo debajo de los enlaces con sus productos', async () => {
+    mockedListStoreProducts.mockResolvedValue({
+      items: [CATALOG_PRODUCT],
+      total: 1,
+      page: 1,
+      page_size: 12,
+      pages: 1,
+    })
+
+    renderStorePage()
+
+    await screen.findByRole('heading', { name: 'Local 2' })
+
+    const catalogHeading = await screen.findByRole('heading', {
+      name: 'Catálogo',
+    })
+    const catalogSection = catalogHeading.closest('section') as HTMLElement
+    const linksSection = screen
+      .getByRole('heading', { name: 'Enlaces' })
+      .closest('section') as HTMLElement
+
+    expect(
+      linksSection.compareDocumentPosition(catalogSection) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+
+    expect(within(catalogSection).getByText('Zapatilla')).toBeInTheDocument()
+    expect(within(catalogSection).getByText('Calzado')).toBeInTheDocument()
+
+    const productLink = within(catalogSection).getByRole('link', {
+      name: /Zapatilla/,
+    })
+    expect(productLink).toHaveAttribute('href', '/productos/11')
+
+    expect(mockedListStoreProducts).toHaveBeenCalledWith('1', 1)
+  })
+
+  it('no repite el local en las tarjetas del catálogo', async () => {
+    mockedListStoreProducts.mockResolvedValue({
+      items: [CATALOG_PRODUCT],
+      total: 1,
+      page: 1,
+      page_size: 12,
+      pages: 1,
+    })
+
+    renderStorePage()
+
+    const catalogHeading = await screen.findByRole('heading', {
+      name: 'Catálogo',
+    })
+    const catalogSection = catalogHeading.closest('section') as HTMLElement
+
+    expect(within(catalogSection).queryByText(/Local /)).not.toBeInTheDocument()
+  })
+
+  it('muestra el estado vacío cuando el local no tiene productos', async () => {
+    renderStorePage()
+
+    expect(
+      await screen.findByText(
+        'Este local todavía no tiene productos disponibles',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Siguiente' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('pagina el catálogo consultando la página siguiente', async () => {
+    mockedListStoreProducts.mockImplementation((_storeId, page) =>
+      Promise.resolve({
+        items: [CATALOG_PRODUCT],
+        total: 20,
+        page,
+        page_size: 12,
+        pages: 2,
+      }),
+    )
+
+    renderStorePage()
+
+    await screen.findByText('Zapatilla')
+    expect(await screen.findByText(/Página 1 de 2/)).toBeInTheDocument()
+
+    const nextButton = screen.getByRole('button', { name: 'Siguiente' })
+    expect(nextButton).toBeEnabled()
+    fireEvent.click(nextButton)
+
+    await waitFor(() =>
+      expect(mockedListStoreProducts).toHaveBeenCalledWith('1', 2),
+    )
+    expect(await screen.findByText(/Página 2 de 2/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Anterior' })).toBeEnabled()
+  })
+
+  it('oculta la paginación cuando solo hay una página', async () => {
+    mockedListStoreProducts.mockResolvedValue({
+      items: [CATALOG_PRODUCT],
+      total: 1,
+      page: 1,
+      page_size: 12,
+      pages: 1,
+    })
+
+    renderStorePage()
+
+    await screen.findByText('Zapatilla')
+    expect(
+      screen.queryByRole('button', { name: 'Siguiente' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Anterior' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('muestra un error cuando el catálogo falla', async () => {
+    mockedListStoreProducts.mockRejectedValue(
+      new ApiError(500, 'Catálogo no disponible.'),
+    )
+
+    renderStorePage()
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/no se ha podido cargar el catálogo/i)
+  })
+})
+
+describe('Volver en la ficha del local', () => {
+  it('regresa a la página de origen cuando hay historial interno', async () => {
+    renderStorePageHistory(['/buscar', '/locales/1'], 1)
+
+    await screen.findByRole('heading', { name: 'Local 2' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Volver' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Buscador' }),
+    ).toBeInTheDocument()
+  })
+
+  it('navega a la portada cuando la entrada es directa', async () => {
+    renderStorePage()
+
+    await screen.findByRole('heading', { name: 'Local 2' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Volver' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Inicio' }),
+    ).toBeInTheDocument()
+  })
+
+  it('expone un botón Volver accesible', async () => {
+    renderStorePage()
+
+    await screen.findByRole('heading', { name: 'Local 2' })
+
+    const backButton = screen.getByRole('button', { name: 'Volver' })
+    expect(backButton).toHaveTextContent('← Volver')
+    expect(backButton).toHaveAttribute('type', 'button')
+  })
+})
+
+describe('Volver en el detalle de producto', () => {
+  it('regresa a la página de origen cuando hay historial interno', async () => {
+    renderProductDetailPageHistory(['/buscar', '/productos/7'], 1)
+
+    await screen.findByRole('heading', { name: 'Remera' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Volver' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Buscador' }),
+    ).toBeInTheDocument()
+  })
+
+  it('navega a la portada cuando la entrada es directa', async () => {
+    renderProductDetailPage()
+
+    await screen.findByRole('heading', { name: 'Remera' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Volver' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Inicio' }),
+    ).toBeInTheDocument()
+  })
+
+  it('mantiene el CTA al buscador en el estado no encontrado', async () => {
+    mockedGetProductDetail.mockRejectedValue(
+      new ApiError(404, 'Producto no encontrado.'),
+    )
+
+    renderProductDetailPageHistory(['/productos/7'])
+
+    expect(
+      await screen.findByRole('heading', { name: 'Producto no encontrado' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Volver al buscador' }),
+    ).toHaveAttribute('href', '/buscar')
+    expect(screen.getByRole('button', { name: 'Volver' })).toBeInTheDocument()
   })
 })

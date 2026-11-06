@@ -3,8 +3,10 @@ import { useState } from 'react'
 import type { ReactElement } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError } from '../../lib/http'
+import { useGoBack } from '../../lib/useGoBack'
 import { getStoreDetail } from './api'
 import { storeDetailKeys } from './queryKeys'
+import { StoreCatalog } from './StoreCatalog'
 import { StoreHours } from './StoreHours'
 import { StoreLinks } from './StoreLinks'
 
@@ -36,6 +38,7 @@ function StoreLogo({ logoUrl, storeName }: StoreLogoProps): ReactElement {
 
 export function StoreDetailPage(): ReactElement {
   const { storeId = '' } = useParams()
+  const goBack = useGoBack()
 
   const detailQuery = useQuery({
     queryKey: storeDetailKeys.detail(storeId),
@@ -51,12 +54,14 @@ export function StoreDetailPage(): ReactElement {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col gap-6 px-6 py-16">
-      <Link
-        to="/buscar"
+      <button
+        type="button"
+        onClick={goBack}
+        aria-label="Volver"
         className="w-fit text-sm font-semibold text-indigo-600 hover:text-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
       >
-        ← Volver a la búsqueda
-      </Link>
+        ← Volver
+      </button>
 
       {detailQuery.isPending ? (
         <p aria-live="polite" className="text-sm text-slate-600">
@@ -168,6 +173,8 @@ export function StoreDetailPage(): ReactElement {
           ) : null}
 
           <StoreLinks links={store.links} />
+
+          <StoreCatalog key={store.id} storeId={String(store.id)} />
         </>
       ) : null}
     </main>
