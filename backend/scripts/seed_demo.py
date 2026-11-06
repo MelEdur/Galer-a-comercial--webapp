@@ -1,0 +1,516 @@
+"""Idempotent demo data for the shopping gallery.
+
+Run from ``backend/`` with::
+
+    python -m scripts.seed_demo
+
+It creates one merchant per store, fills the store public information
+(description, logo, contact, hours and links) and adds a small catalog per
+store. Running it again updates the demo stores and products instead of
+duplicating them.
+
+Demo merchant accounts use the same password: ``comercio1234``.
+"""
+
+from __future__ import annotations
+
+import re
+import unicodedata
+from datetime import time
+from decimal import Decimal
+from urllib.parse import quote_plus
+
+from sqlalchemy import select
+
+import app.db.registry  # noqa: F401  (registers all models / relationship targets)
+from app.core.database import SessionLocal
+from app.core.security import hash_password
+from app.modules.accounts.models import User
+from app.modules.catalog.models import (
+    Category,
+    Product,
+    ProductCategory,
+    ProductImage,
+)
+from app.modules.stores.models import Store, StoreHour, StoreLink
+
+DEMO_PASSWORD = "comercio1234"
+
+# (name, description, price, offer_price or None, category names)
+ProductSpec = tuple[str, str, str, str | None, list[str]]
+
+STORES: list[dict[str, object]] = [
+    {
+        "number": 1,
+        "name": "Moda Urbana",
+        "description": "Indumentaria urbana y accesorios para todos los días.",
+        "color": "4f46e5",
+        "hours": "shop",
+        "products": [
+            ("Remera oversize negra", "Algodón peinado, corte holgado.", "15900.00", "12900.00", ["Indumentaria"]),
+            ("Jean recto azul", "Denim rígido con lavado medio.", "34900.00", None, ["Indumentaria"]),
+            ("Gorra urbana", "Gorra ajustable con bordado frontal.", "9900.00", None, ["Accesorios"]),
+        ],
+    },
+    {
+        "number": 2,
+        "name": "Café Central",
+        "description": "Cafetería de especialidad y panadería artesanal.",
+        "color": "b45309",
+        "hours": "cafe",
+        "products": [
+            ("Café latte grande", "Espresso doble con leche vaporizada.", "3500.00", None, ["Gastronomía"]),
+            ("Medialunas de manteca x6", "Recién horneadas, masa hojaldrada.", "4800.00", "3900.00", ["Gastronomía"]),
+            ("Sándwich de jamón y queso", "Pan ciabatta tostado.", "5200.00", None, ["Gastronomía"]),
+        ],
+    },
+    {
+        "number": 3,
+        "name": "TecnoStore",
+        "description": "Tecnología, accesorios y periféricos para tu setup.",
+        "color": "0f766e",
+        "hours": "shop",
+        "products": [
+            ("Auriculares inalámbricos", "Bluetooth 5.3 con cancelación de ruido.", "45900.00", "39900.00", ["Tecnología"]),
+            ("Teclado mecánico", "Switch rojo y retroiluminación RGB.", "62900.00", None, ["Tecnología"]),
+            ("Mouse gamer", "Sensor óptico de 12.000 DPI.", "28900.00", None, ["Tecnología"]),
+        ],
+    },
+    {
+        "number": 4,
+        "name": "Calzado Sur",
+        "description": "Calzado cómodo para running, ciudad y verano.",
+        "color": "7c2d12",
+        "hours": "shop",
+        "products": [
+            ("Zapatillas running", "Amortiguación media y malla transpirable.", "78900.00", "65900.00", ["Calzado"]),
+            ("Botas de cuero", "Cuero vacuno con suela antideslizante.", "99900.00", None, ["Calzado"]),
+            ("Sandalias verano", "Plantilla acolchada y tiras ajustables.", "25900.00", None, ["Calzado"]),
+        ],
+    },
+    {
+        "number": 5,
+        "name": "Belleza Natural",
+        "description": "Cuidado facial y maquillaje con ingredientes suaves.",
+        "color": "be185d",
+        "hours": "shop",
+        "products": [
+            ("Crema facial hidratante", "Ácido hialurónico y aloe vera.", "18900.00", None, ["Belleza"]),
+            ("Sérum vitamina C", "Ilumina y unifica el tono.", "24500.00", "19900.00", ["Belleza"]),
+            ("Labial mate", "Larga duración, tono nude.", "8900.00", None, ["Belleza"]),
+        ],
+    },
+    {
+        "number": 6,
+        "name": "Hogar & Deco",
+        "description": "Textiles, iluminación y detalles para tu casa.",
+        "color": "a16207",
+        "hours": "shop",
+        "products": [
+            ("Juego de sábanas queen", "Algodón 300 hilos, cuatro piezas.", "45900.00", None, ["Hogar"]),
+            ("Lámpara de mesa", "Base de madera y pantalla de lino.", "32900.00", "27900.00", ["Hogar"]),
+            ("Set de tazas", "Cuatro tazas de cerámica esmaltada.", "15900.00", None, ["Hogar"]),
+        ],
+    },
+    {
+        "number": 7,
+        "name": "Deportes Pro",
+        "description": "Equipamiento y accesorios para entrenar mejor.",
+        "color": "166534",
+        "hours": "shop",
+        "products": [
+            ("Pelota de fútbol", "Número 5, costura reforzada.", "22900.00", None, ["Deportes"]),
+            ("Mancuernas 5 kg", "Par con recubrimiento antideslizante.", "35900.00", "29900.00", ["Deportes"]),
+            ("Botella deportiva", "1 litro, libre de BPA.", "9900.00", None, ["Deportes"]),
+        ],
+    },
+    {
+        "number": 8,
+        "name": "Juguetería Fantasía",
+        "description": "Juguetes, bloques y diversión para todas las edades.",
+        "color": "7e22ce",
+        "hours": "shop",
+        "products": [
+            ("Peluche gigante", "Oso de 80 cm, tela extra suave.", "25900.00", None, ["Juguetería"]),
+            ("Set de bloques", "120 piezas de construcción.", "31900.00", "25900.00", ["Juguetería"]),
+            ("Auto a control remoto", "Tracción 4x4 y batería recargable.", "45900.00", None, ["Juguetería"]),
+        ],
+    },
+    {
+        "number": 9,
+        "name": "Librería Cultura",
+        "description": "Libros, agendas y papelería para lectores curiosos.",
+        "color": "1e40af",
+        "hours": "shop",
+        "products": [
+            ("Novela best seller", "Última edición en tapa blanda.", "18900.00", None, ["Librería"]),
+            ("Agenda 2027", "Formato A5 con separadores.", "12900.00", None, ["Librería"]),
+            ("Set de marcadores", "Seis colores con punta fina.", "4900.00", "3900.00", ["Librería"]),
+        ],
+    },
+    {
+        "number": 10,
+        "name": "Accesorios Chic",
+        "description": "Carteras, joyería y relojes con estilo propio.",
+        "color": "9d174d",
+        "hours": "shop",
+        "products": [
+            ("Cartera de cuero", "Cuero sintético con correa ajustable.", "45900.00", "37900.00", ["Accesorios"]),
+            ("Collar dorado", "Baño de oro 18k, cadena fina.", "15900.00", None, ["Accesorios"]),
+            ("Reloj minimalista", "Malla de acero y esfera blanca.", "38900.00", None, ["Accesorios"]),
+        ],
+    },
+    {
+        "number": 11,
+        "name": "Moda Kids",
+        "description": "Ropa, calzado y mochilas para los más chicos.",
+        "color": "0284c7",
+        "hours": "shop",
+        "products": [
+            ("Conjunto infantil", "Buzo y pantalón de algodón.", "22900.00", None, ["Indumentaria"]),
+            ("Zapatillas niños", "Cierre velcro y suela flexible.", "27900.00", "22900.00", ["Calzado"]),
+            ("Mochila escolar", "Dos compartimentos y espalda acolchada.", "18900.00", None, ["Accesorios"]),
+        ],
+    },
+    {
+        "number": 12,
+        "name": "Óptica Visión",
+        "description": "Anteojos de sol, recetados y accesorios de cuidado.",
+        "color": "0e7490",
+        "hours": "shop",
+        "products": [
+            ("Anteojos de sol", "Protección UV400, marco liviano.", "25900.00", None, ["Accesorios"]),
+            ("Gafas recetadas", "Armazón metálico con cristales claros.", "45900.00", "38900.00", ["Accesorios"]),
+            ("Estuche rígido", "Interior forrado y cierre magnético.", "6900.00", None, ["Accesorios"]),
+        ],
+    },
+    {
+        "number": 13,
+        "name": "Perfumería Aroma",
+        "description": "Fragancias, body splashes y aromas para el hogar.",
+        "color": "9333ea",
+        "hours": "shop",
+        "products": [
+            ("Perfume floral 100 ml", "Notas de jazmín y vainilla.", "55900.00", "47900.00", ["Belleza"]),
+            ("Body splash", "Frescura cítrica de larga duración.", "18900.00", None, ["Belleza"]),
+            ("Vela aromática", "Cera de soja con aroma a lavanda.", "12900.00", None, ["Hogar"]),
+        ],
+    },
+    {
+        "number": 14,
+        "name": "Mundo Gamer",
+        "description": "Consolas, accesorios y sillas para jugar cómodo.",
+        "color": "1e293b",
+        "hours": "shop",
+        "products": [
+            ("Consola portátil", "Pantalla OLED y 256 GB de almacenamiento.", "459900.00", None, ["Tecnología"]),
+            ("Joystick inalámbrico", "Conexión Bluetooth y batería de 20 horas.", "65900.00", "55900.00", ["Tecnología"]),
+            ("Silla gamer", "Reclinable con apoyabrazos ajustables.", "189900.00", None, ["Hogar"]),
+        ],
+    },
+    {
+        "number": 15,
+        "name": "Bazar Central",
+        "description": "Artículos prácticos para cocina y organización.",
+        "color": "c2410c",
+        "hours": "shop",
+        "products": [
+            ("Organizador de cocina", "Tres niveles apilables.", "12900.00", None, ["Hogar"]),
+            ("Set de ollas", "Cinco piezas antiadherentes.", "68900.00", "58900.00", ["Hogar"]),
+            ("Espejo de pared", "Marco de madera, 60 x 80 cm.", "22900.00", None, ["Hogar"]),
+        ],
+    },
+    {
+        "number": 16,
+        "name": "Ropa Deportiva Fit",
+        "description": "Indumentaria técnica para entrenamiento diario.",
+        "color": "15803d",
+        "hours": "shop",
+        "products": [
+            ("Calza deportiva", "Tejido compresivo y cintura alta.", "24900.00", None, ["Indumentaria", "Deportes"]),
+            ("Remera técnica", "Secado rápido y costuras planas.", "19900.00", "15900.00", ["Indumentaria", "Deportes"]),
+            ("Campera rompeviento", "Liviana, con capucha y bolsillos.", "45900.00", None, ["Indumentaria"]),
+        ],
+    },
+    {
+        "number": 17,
+        "name": "Panadería Delicias",
+        "description": "Panes de masa madre, tortas y facturas del día.",
+        "color": "b91c1c",
+        "hours": "cafe",
+        "products": [
+            ("Pan artesanal", "Masa madre, corteza crocante.", "3500.00", None, ["Gastronomía"]),
+            ("Torta de chocolate", "Bizcochuelo húmedo y ganache.", "12900.00", "9900.00", ["Gastronomía"]),
+            ("Chipá x6", "Queso cremoso y tapioca.", "4200.00", None, ["Gastronomía"]),
+        ],
+    },
+    {
+        "number": 18,
+        "name": "Zapatillas Plus",
+        "description": "Zapatillas urbanas, skate y accesorios.",
+        "color": "4338ca",
+        "hours": "shop",
+        "products": [
+            ("Zapatillas urbanas", "Suela de goma y capellada de lona.", "69900.00", None, ["Calzado"]),
+            ("Zapatillas skate", "Refuerzo lateral y plantilla acolchada.", "58900.00", "49900.00", ["Calzado"]),
+            ("Medias deportivas", "Pack de tres pares de algodón.", "5900.00", None, ["Accesorios"]),
+        ],
+    },
+    {
+        "number": 19,
+        "name": "Juguetes Educativos",
+        "description": "Juegos de ingenio, ciencias y mesa para aprender.",
+        "color": "6d28d9",
+        "hours": "shop",
+        "products": [
+            ("Rompecabezas 500 piezas", "Paisaje ilustrado, piezas grandes.", "15900.00", None, ["Juguetería"]),
+            ("Kit de ciencias", "Experimentos seguros para niños.", "32900.00", "27900.00", ["Juguetería", "Librería"]),
+            ("Juego de mesa familiar", "Partidas de 30 a 60 minutos.", "24900.00", None, ["Juguetería"]),
+        ],
+    },
+    {
+        "number": 20,
+        "name": "Librería Escolar",
+        "description": "Todo para el ciclo escolar y la oficina.",
+        "color": "0369a1",
+        "hours": "shop",
+        "products": [
+            ("Mochila con ruedas", "Estructura reforzada y asa telescópica.", "38900.00", None, ["Accesorios", "Librería"]),
+            ("Cartuchera completa", "Dos compartimentos y accesorios.", "14900.00", "11900.00", ["Librería"]),
+            ("Cuaderno universitario", "Hojas rayadas, tapa dura.", "4900.00", None, ["Librería"]),
+        ],
+    },
+    {
+        "number": 21,
+        "name": "Café del Fondo",
+        "description": "Café de especialidad, pastelería y bebidas frías.",
+        "color": "78350f",
+        "hours": "cafe",
+        "products": [
+            ("Cappuccino", "Espresso, leche y espuma cremosa.", "3800.00", None, ["Gastronomía"]),
+            ("Cheesecake", "Base de galleta y frutos rojos.", "6500.00", "5500.00", ["Gastronomía"]),
+            ("Té helado", "Infusión de frutos del bosque.", "3200.00", None, ["Gastronomía"]),
+        ],
+    },
+]
+
+SHOP_HOURS = [
+    (0, "10:00", "20:00"),
+    (1, "10:00", "20:00"),
+    (2, "10:00", "20:00"),
+    (3, "10:00", "20:00"),
+    (4, "10:00", "20:00"),
+    (5, "10:00", "14:00"),
+]
+
+CAFE_HOURS = [
+    (0, "08:00", "21:00"),
+    (1, "08:00", "21:00"),
+    (2, "08:00", "21:00"),
+    (3, "08:00", "21:00"),
+    (4, "08:00", "21:00"),
+    (5, "08:00", "21:00"),
+    (6, "09:00", "20:00"),
+]
+
+
+def _slug(value: str) -> str:
+    """Return a URL-friendly slug for demo assets."""
+    normalized = unicodedata.normalize("NFKD", value)
+    ascii_value = normalized.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "-", ascii_value.lower()).strip("-")
+
+
+def _logo_url(name: str, color: str) -> str:
+    return f"https://placehold.co/200x200/{color}/ffffff?text={quote_plus(name)}"
+
+
+def _image_urls(name: str) -> list[str]:
+    slug = _slug(name)
+    return [
+        f"https://picsum.photos/seed/{slug}-1/800/600",
+        f"https://picsum.photos/seed/{slug}-2/800/600",
+    ]
+
+
+def _hours_for(kind: str) -> list[tuple[int, str, str]]:
+    return CAFE_HOURS if kind == "cafe" else SHOP_HOURS
+
+
+def _ensure_merchant(session, store: Store, number: int) -> tuple[User, bool]:
+    """Return the demo merchant for a store, creating it when needed."""
+    email = f"comercio{number:02d}@galeria.local"
+    merchant = session.scalar(select(User).where(User.email == email))
+    if merchant is not None:
+        return merchant, False
+
+    existing = session.scalar(
+        select(User).where(
+            User.store_id == store.id,
+            User.role == "merchant",
+            User.is_active.is_(True),
+        )
+    )
+    if existing is not None:
+        return existing, False
+
+    merchant = User(
+        email=email,
+        full_name=f"Comerciante {store.name}",
+        password_hash=hash_password(DEMO_PASSWORD),
+        role="merchant",
+        is_active=True,
+        store_id=store.id,
+    )
+    session.add(merchant)
+    session.flush()
+    return merchant, True
+
+
+def _replace_hours(session, store: Store, kind: str) -> None:
+    store.hours.clear()
+    session.flush()
+    for day, opens, closes in _hours_for(kind):
+        store.hours.append(
+            StoreHour(
+                day_of_week=day,
+                opens_at=time.fromisoformat(opens),
+                closes_at=time.fromisoformat(closes),
+            )
+        )
+
+
+def _replace_links(session, store: Store, slug: str) -> None:
+    store.links.clear()
+    session.flush()
+    store.links.append(
+        StoreLink(
+            label="Instagram",
+            url=f"https://instagram.com/{slug}",
+            position=0,
+        )
+    )
+    store.links.append(
+        StoreLink(
+            label="Sitio web",
+            url=f"https://www.example.com/{slug}",
+            position=1,
+        )
+    )
+
+
+def _upsert_product(
+    session,
+    store: Store,
+    spec: ProductSpec,
+    categories: dict[str, Category],
+) -> tuple[bool, bool]:
+    """Create or update a demo product; return ``(created, updated)``."""
+    name, description, price, offer, category_names = spec
+    product = session.scalar(
+        select(Product).where(Product.store_id == store.id, Product.name == name)
+    )
+    created = product is None
+    if product is None:
+        product = Product(store_id=store.id, name=name)
+        session.add(product)
+
+    product.description = description
+    product.price = Decimal(price)
+    product.offer_price = Decimal(offer) if offer else None
+    product.is_active = True
+    product.deleted_at = None
+    product.is_featured = False
+
+    product.product_categories.clear()
+    session.flush()
+    for category_name in category_names:
+        category = categories.get(category_name)
+        if category is not None:
+            product.product_categories.append(ProductCategory(category=category))
+
+    product.images.clear()
+    session.flush()
+    for position, url in enumerate(_image_urls(name)):
+        product.images.append(
+            ProductImage(
+                url=url,
+                alt_text=name,
+                position=position,
+                is_primary=position == 0,
+            )
+        )
+
+    return created, not created
+
+
+def seed_demo() -> dict[str, int]:
+    """Populate the gallery with demo merchants, store data and products."""
+    summary = {"merchants": 0, "products": 0, "stores": 0, "updated": 0}
+
+    with SessionLocal() as session:
+        categories = {
+            category.name: category
+            for category in session.scalars(select(Category)).all()
+        }
+        if not categories:
+            raise RuntimeError(
+                "No hay categorías. Ejecuta 'python -m scripts.seed_categories' primero."
+            )
+
+        for data in STORES:
+            number = int(data["number"])
+            store = session.scalar(select(Store).where(Store.number == number))
+            if store is None:
+                raise RuntimeError(
+                    f"No existe el local {number}. Ejecuta 'python -m scripts.seed_stores'."
+                )
+
+            name = str(data["name"])
+            slug = _slug(name)
+            store.name = name
+            store.description = str(data["description"])
+            store.logo_url = _logo_url(name, str(data["color"]))
+            store.email = f"{slug}@galeria.local"
+            store.phone = f"11 4000-{number:04d}"
+            store.whatsapp = f"549114000{number:04d}"
+            store.is_active = True
+
+            _replace_hours(session, store, str(data["hours"]))
+            _replace_links(session, store, slug)
+
+            _, created = _ensure_merchant(session, store, number)
+            if created:
+                summary["merchants"] += 1
+
+            for product_spec in data["products"]:
+                created, updated = _upsert_product(
+                    session, store, product_spec, categories
+                )
+                if created:
+                    summary["products"] += 1
+                if updated:
+                    summary["updated"] += 1
+
+            summary["stores"] += 1
+            session.flush()
+
+        session.commit()
+
+    return summary
+
+
+def main() -> None:
+    summary = seed_demo()
+    print(
+        "Datos demo generados: "
+        f"{summary['stores']} locales, "
+        f"{summary['merchants']} comerciantes nuevos, "
+        f"{summary['products']} productos nuevos "
+        f"({summary['updated']} actualizados)."
+    )
+    print(f"Contraseña de los comerciantes demo: {DEMO_PASSWORD}")
+
+
+if __name__ == "__main__":
+    main()

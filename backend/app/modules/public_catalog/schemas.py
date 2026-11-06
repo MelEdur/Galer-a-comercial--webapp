@@ -59,6 +59,35 @@ class PaginatedPublicProducts(BaseModel):
     pages: int
 
 
+class ExploreCategory(BaseModel):
+    """A category in the explore page, with its available product count."""
+
+    id: int
+    name: str
+    product_count: int
+
+
+class ExploreStore(BaseModel):
+    """A store summary as shown in the explore page and store listing."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    number: int
+    name: str
+    description: str | None
+    logo_url: str | None
+
+
+class ExploreResponse(BaseModel):
+    """The public discovery page: featured products, offers and more."""
+
+    featured: list[PublicProduct]
+    offers: list[PublicProduct]
+    categories: list[ExploreCategory]
+    stores: list[ExploreStore]
+
+
 class PublicImageDetail(BaseModel):
     """A product image in the public detail, with its gallery position."""
 

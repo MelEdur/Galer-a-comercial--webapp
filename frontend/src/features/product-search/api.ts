@@ -27,6 +27,10 @@ function buildProductQuery(filters: PublicProductFilters): string {
     params.set('max_price', maxPrice)
   }
 
+  if (filters.hasOffer) {
+    params.set('has_offer', 'true')
+  }
+
   params.set('sort', filters.sort)
   params.set('page', String(filters.page))
 

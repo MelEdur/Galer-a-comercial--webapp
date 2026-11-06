@@ -17,6 +17,8 @@ export interface SearchFiltersProps {
   onMinPriceChange: (value: string) => void
   maxPrice: string
   onMaxPriceChange: (value: string) => void
+  hasOffer: boolean
+  onHasOfferChange: (value: boolean) => void
   sort: PublicProductSort
   onSortChange: (value: string) => void
 }
@@ -31,6 +33,8 @@ export function SearchFilters({
   onMinPriceChange,
   maxPrice,
   onMaxPriceChange,
+  hasOffer,
+  onHasOfferChange,
   sort,
   onSortChange,
 }: SearchFiltersProps): ReactElement {
@@ -134,6 +138,22 @@ export function SearchFilters({
             ))}
           </select>
         </div>
+      </div>
+
+      <div className="mt-4 flex items-center gap-2">
+        <input
+          id="public-product-has-offer"
+          type="checkbox"
+          checked={hasOffer}
+          onChange={(event) => onHasOfferChange(event.target.checked)}
+          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+        />
+        <label
+          htmlFor="public-product-has-offer"
+          className="text-sm font-medium text-slate-700"
+        >
+          Solo ofertas
+        </label>
       </div>
     </section>
   )

@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.modules.public_catalog.schemas import (
+    ExploreResponse,
+    ExploreStore,
     PaginatedPublicProducts,
     PublicCategory,
     PublicProductDetail,
@@ -21,7 +23,9 @@ from app.modules.public_catalog.service import (
     get_product_detail,
     get_store_profile,
     list_categories,
+    list_explore,
     list_products,
+    list_public_stores,
     list_similar_products,
 )
 
@@ -46,6 +50,7 @@ def get_public_products(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     sort: Literal["name", "price_asc", "price_desc"] = Query(default="name"),
+    has_offer: bool = Query(default=False),
     db: Session = Depends(get_db),
 ) -> PaginatedPublicProducts:
     """Return one page of available products filtered by the visitor."""
@@ -59,6 +64,7 @@ def get_public_products(
             page=page,
             page_size=page_size,
             sort=sort,
+            has_offer=has_offer,
         )
     except InvalidPriceRangeError as exc:
         raise HTTPException(
@@ -75,6 +81,26 @@ def get_public_products(
 def get_public_categories(db: Session = Depends(get_db)) -> list[PublicCategory]:
     """Return every category ordered by name."""
     return list_categories(db)
+
+
+@router.get(
+    "/explore",
+    response_model=ExploreResponse,
+    summary="Get the public discovery page",
+)
+def get_public_explore(db: Session = Depends(get_db)) -> ExploreResponse:
+    """Return featured products, offers, categories and active stores."""
+    return list_explore(db)
+
+
+@router.get(
+    "/stores",
+    response_model=list[ExploreStore],
+    summary="List every active store",
+)
+def get_public_stores(db: Session = Depends(get_db)) -> list[ExploreStore]:
+    """Return every active store ordered by number, without pagination."""
+    return list_public_stores(db)
 
 
 @router.get(

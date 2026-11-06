@@ -13,13 +13,17 @@ import { ProductDetailPage } from '../features/product-detail/ProductDetailPage'
 import { SearchPage } from '../features/product-search/SearchPage'
 import { StoreSettingsPage } from '../features/merchant-store/StoreSettingsPage'
 import { StoreDetailPage } from '../features/store-detail/StoreDetailPage'
+import { ExplorePage } from '../features/explore/ExplorePage'
+import { StoreListPage } from '../features/explore/StoreListPage'
 
 export function AppRoutes(): ReactElement {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
+      <Route path="/explorar" element={<ExplorePage />} />
       <Route path="/buscar" element={<SearchPage />} />
       <Route path="/productos/:productId" element={<ProductDetailPage />} />
+      <Route path="/locales" element={<StoreListPage />} />
       <Route path="/locales/:storeId" element={<StoreDetailPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route

@@ -16,6 +16,9 @@ from sqlalchemy.orm import Session, selectinload
 from app.modules.analytics.models import ProductSearchEvent
 from app.modules.catalog.models import Category, Product, ProductCategory
 from app.modules.public_catalog.schemas import (
+    ExploreCategory,
+    ExploreResponse,
+    ExploreStore,
     PaginatedPublicProducts,
     PublicCategory,
     PublicImage,
@@ -35,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 SIMILAR_RESULTS_LIMIT = 6
 SIMILAR_CANDIDATES_LIMIT = 50
+EXPLORE_PRODUCTS_LIMIT = 8
+EXPLORE_STORES_LIMIT = 6
 # A "significant" word is a run of letters (any alphabet) of at least 3 chars.
 _WORD_PATTERN = re.compile(r"[^\W\d_]+", re.UNICODE)
 
@@ -304,6 +309,7 @@ def list_products(
     page: int,
     page_size: int,
     sort: str,
+    has_offer: bool = False,
 ) -> PaginatedPublicProducts:
     """Return one filtered, ordered page of the available public catalog."""
     if min_price is not None and max_price is not None and min_price > max_price:
@@ -317,9 +323,13 @@ def list_products(
         or category_id is not None
         or min_price is not None
         or max_price is not None
+        or has_offer
     )
 
     conditions = _base_conditions()
+
+    if has_offer:
+        conditions.append(Product.offer_price.is_not(None))
 
     if normalized_search:
         pattern = f"%{_escape_like(normalized_search)}%"
@@ -439,3 +449,110 @@ def get_store_profile(session: Session, store_id: int) -> PublicStoreProfile:
         hours=[PublicStoreHour.model_validate(hour) for hour in hours],
         links=[PublicStoreLink.model_validate(link) for link in links],
     )
+
+
+def _available_products_query():
+    """Base query of available products joined with their store."""
+    return (
+        select(Product)
+        .join(Store, Product.store_id == Store.id)
+        .where(*_base_conditions())
+    )
+
+
+def _explore_products(
+    session: Session,
+    *,
+    only_offers: bool,
+    exclude_ids: list[int] | None = None,
+    limit: int,
+) -> list[Product]:
+    """Load available products for the explore sections with eager loading."""
+    query = _available_products_query()
+    if only_offers:
+        query = query.where(Product.offer_price.is_not(None))
+    if exclude_ids:
+        query = query.where(Product.id.notin_(exclude_ids))
+    return list(
+        session.scalars(
+            query.options(*_detail_options())
+            .order_by(Product.created_at.desc(), Product.id.desc())
+            .limit(limit)
+        ).all()
+    )
+
+
+def _explore_categories(session: Session) -> list[ExploreCategory]:
+    """Count available products per category, including empty categories."""
+    available_products = (
+        select(Product.id.label("id"))
+        .join(Store, Product.store_id == Store.id)
+        .where(*_base_conditions())
+        .subquery()
+    )
+    counts = (
+        select(
+            ProductCategory.category_id,
+            func.count(func.distinct(ProductCategory.product_id)).label("count"),
+        )
+        .join(
+            available_products,
+            ProductCategory.product_id == available_products.c.id,
+        )
+        .group_by(ProductCategory.category_id)
+        .subquery()
+    )
+    rows = session.execute(
+        select(
+            Category.id,
+            Category.name,
+            func.coalesce(counts.c.count, 0),
+        )
+        .outerjoin(counts, counts.c.category_id == Category.id)
+        .order_by(func.lower(Category.name), Category.id)
+    ).all()
+    return [
+        ExploreCategory(id=category_id, name=name, product_count=count)
+        for category_id, name, count in rows
+    ]
+
+
+def _explore_stores(
+    session: Session, *, limit: int | None = None
+) -> list[ExploreStore]:
+    """Load active stores ordered by their gallery number."""
+    query = select(Store).where(Store.is_active.is_(True)).order_by(Store.number)
+    if limit is not None:
+        query = query.limit(limit)
+    return [
+        ExploreStore.model_validate(store) for store in session.scalars(query).all()
+    ]
+
+
+def list_explore(session: Session) -> ExploreResponse:
+    """Build the public discovery page from a few aggregated queries."""
+    offers = _explore_products(
+        session, only_offers=True, limit=EXPLORE_PRODUCTS_LIMIT
+    )
+    featured = list(offers)
+    if len(featured) < EXPLORE_PRODUCTS_LIMIT:
+        featured.extend(
+            _explore_products(
+                session,
+                only_offers=False,
+                exclude_ids=[product.id for product in featured],
+                limit=EXPLORE_PRODUCTS_LIMIT - len(featured),
+            )
+        )
+
+    return ExploreResponse(
+        featured=[_to_read(product) for product in featured],
+        offers=[_to_read(product) for product in offers],
+        categories=_explore_categories(session),
+        stores=_explore_stores(session, limit=EXPLORE_STORES_LIMIT),
+    )
+
+
+def list_public_stores(session: Session) -> list[ExploreStore]:
+    """Return every active store ordered by number."""
+    return _explore_stores(session)

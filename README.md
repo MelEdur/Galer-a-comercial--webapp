@@ -172,6 +172,22 @@ docker compose exec backend python -m scripts.create_admin
 
 El script lee `ADMIN_EMAIL`, `ADMIN_PASSWORD` y `ADMIN_FULL_NAME` (por defecto `Administrador`). Si falta el correo o la contraseña termina con un error claro sin crear nada. Es idempotente: si el correo ya existe no modifica la cuenta ni la contraseña.
 
+### Datos de demostración
+
+Para poblar la galería con comerciantes, información de locales y productos:
+
+```bash
+docker compose exec backend python -m scripts.seed_demo
+```
+
+El script requiere que existan los locales y las categorías. Crea un comerciante por local, completa nombre, descripción, logo, contacto, horarios y enlaces de los 21 locales, y agrega tres productos por local. Es idempotente: una segunda ejecución actualiza los datos demo sin duplicar comerciantes ni productos.
+
+Credenciales de los comerciantes demo:
+
+- Correos: `comercio01@galeria.local` … `comercio21@galeria.local`.
+- Contraseña: `comercio1234`.
+- El administrador sigue siendo `admin@galeria.local`.
+
 ## Autenticación y administración
 
 - `POST /api/auth/login` recibe `{"email": "...", "password": "..."}` y responde `{"access_token": "...", "token_type": "bearer"}`. Ante credenciales inválidas responde siempre `401` con el mismo mensaje.
@@ -198,10 +214,12 @@ Los datos inválidos, las categorías inexistentes y una oferta que no sea menor
 
 Las rutas `/api/public/*` no requieren autenticación. Solo exponen productos disponibles: no eliminados, activos y de locales activos. Cada resultado incluye `id`, `name`, `description`, `price`, `offer_price`, `effective_price` (`coalesce(offer_price, price)`), `categories` (`{id, name}`), `primary_image` (`{url, alt_text}` o `null`) y `store` (`{id, number, name}`); nunca expone `store_id`, `is_active` ni `deleted_at`.
 
-- `GET /api/public/products` busca productos disponibles. Query: `search` (nombre, coincidencia parcial sin distinguir mayúsculas, comodines literales), `category_id`, `min_price` y `max_price` (inclusivos sobre el precio efectivo, no negativos), `page` (desde 1), `page_size` (1–100, por defecto 20) y `sort` (`name` por defecto, `price_asc` o `price_desc`). Los filtros se combinan con AND. Responde `{items, total, page, page_size, pages}`.
+- `GET /api/public/products` busca productos disponibles. Query: `search` (nombre, coincidencia parcial sin distinguir mayúsculas, comodines literales), `category_id`, `min_price` y `max_price` (inclusivos sobre el precio efectivo, no negativos), `has_offer` (solo productos con precio de oferta), `page` (desde 1), `page_size` (1–100, por defecto 20) y `sort` (`name` por defecto, `price_asc` o `price_desc`). Los filtros se combinan con AND. Responde `{items, total, page, page_size, pages}`.
 - `GET /api/public/categories` devuelve todas las categorías globales `{id, name}` ordenadas por nombre.
+- `GET /api/public/explore` devuelve la portada de descubrimiento: `featured` (hasta 8 productos, primero las ofertas recientes y luego novedades sin repetir), `offers` (hasta 8 productos con precio de oferta), `categories` (`{id, name, product_count}` de productos disponibles, incluidas las de conteo cero) y `stores` (hasta 6 locales activos ordenados por número).
+- `GET /api/public/stores` devuelve todos los locales activos `{id, number, name, description, logo_url}` ordenados por número, sin paginación.
 - Un rango con `min_price > max_price` o un precio negativo responde `422`. Sin criterios se devuelve todo el catálogo disponible paginado.
-- Cuando la consulta incluye al menos un criterio y la página devuelve productos, se registra un evento de búsqueda por producto de la página para las estadísticas de CU #10; la exploración sin criterios y las páginas vacías no registran eventos.
+- Cuando la consulta incluye al menos un criterio (incluido `has_offer=true`) y la página devuelve productos, se registra un evento de búsqueda por producto de la página para las estadísticas de CU #10; la exploración sin criterios, la exploración pública (`/explore`) y las páginas vacías no registran eventos.
 
 ## Detalle público
 

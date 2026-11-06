@@ -36,6 +36,7 @@ export function SearchPage(): ReactElement {
   const categoryId = parseCategoryId(searchParams.get('category'))
   const minPrice = searchParams.get('min_price') ?? ''
   const maxPrice = searchParams.get('max_price') ?? ''
+  const hasOffer = searchParams.get('has_offer') === 'true'
   const sort = parseSort(searchParams.get('sort'))
   const page = parsePage(searchParams.get('page'))
 
@@ -91,6 +92,7 @@ export function SearchPage(): ReactElement {
     categoryId,
     minPrice,
     maxPrice,
+    hasOffer,
     sort,
     page,
   }
@@ -111,7 +113,8 @@ export function SearchPage(): ReactElement {
     search.trim().length > 0 ||
     categoryId !== null ||
     minPrice.trim().length > 0 ||
-    maxPrice.trim().length > 0
+    maxPrice.trim().length > 0 ||
+    hasOffer
 
   const errorMessage =
     productsQuery.error instanceof ApiError && productsQuery.error.status === 422
@@ -140,6 +143,10 @@ export function SearchPage(): ReactElement {
         onMinPriceChange={setMinPriceInput}
         maxPrice={maxPriceInput}
         onMaxPriceChange={setMaxPriceInput}
+        hasOffer={hasOffer}
+        onHasOfferChange={(value) =>
+          updateParams({ has_offer: value ? 'true' : null, page: null })
+        }
         sort={sort}
         onSortChange={(value) => updateParams({ sort: value, page: null })}
       />

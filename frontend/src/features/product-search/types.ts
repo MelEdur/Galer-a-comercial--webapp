@@ -33,6 +33,7 @@ export interface PublicProductFilters {
   categoryId: number | null
   minPrice: string
   maxPrice: string
+  hasOffer: boolean
   sort: PublicProductSort
   page: number
 }
