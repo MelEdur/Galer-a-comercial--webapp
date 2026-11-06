@@ -17,6 +17,10 @@ venv/
 .coverage
 htmlcov/
 
+# Asistente virtual: Chroma y caché de embeddings
+.chroma/
+.hf/
+
 # Node
 node_modules/
 dist/

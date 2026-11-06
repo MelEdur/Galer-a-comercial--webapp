@@ -63,6 +63,14 @@ export function SearchPage(): ReactElement {
     )
   }
 
+  // Keep the debounced inputs in sync when the URL changes externally, for
+  // example when the assistant opens /buscar with a different search term.
+  useEffect(() => {
+    setSearchInput(search)
+    setMinPriceInput(minPrice)
+    setMaxPriceInput(maxPrice)
+  }, [search, minPrice, maxPrice])
+
   useEffect(() => {
     const isUnchanged =
       searchInput === search &&

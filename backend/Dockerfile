@@ -8,6 +8,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY requirements.txt requirements-dev.txt ./
+# Install CPU-only torch before the rest so sentence-transformers does not
+# pull the much larger CUDA build.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements-dev.txt
 
 COPY . .

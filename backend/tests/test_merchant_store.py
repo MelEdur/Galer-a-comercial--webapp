@@ -18,6 +18,14 @@ pytestmark = requires_database
 STORE_URL = "/api/merchant/store"
 
 
+@pytest.fixture(autouse=True)
+def _disable_assistant_reindex(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep CU #9 tests independent from the assistant index."""
+    from app.modules.assistant import indexing
+
+    monkeypatch.setattr(indexing, "reindex_store_safely", lambda store_id: None)
+
+
 def _payload(**overrides) -> dict:
     data = {"name": "Local 1"}
     data.update(overrides)

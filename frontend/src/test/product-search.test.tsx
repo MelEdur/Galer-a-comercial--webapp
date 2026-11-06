@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   listPublicCategories,
@@ -219,6 +219,47 @@ describe('Búsqueda pública de productos', () => {
         mockedSearchProducts.mock.calls.some(([filters]) => filters.page === 2),
       ).toBe(true),
     )
+  })
+
+  it('sincroniza el término cuando la URL cambia externamente', async () => {
+    function GoAudio() {
+      const navigate = useNavigate()
+      return (
+        <button type="button" onClick={() => navigate('/buscar?search=audio')}>
+          Ir a audio
+        </button>
+      )
+    }
+
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <MemoryRouter initialEntries={['/buscar?search=zapatillas']}>
+          <GoAudio />
+          <Routes>
+            <Route path="/buscar" element={<SearchPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    const input = await screen.findByLabelText('Buscar productos')
+    expect(input).toHaveValue('zapatillas')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ir a audio' }))
+
+    await waitFor(() => expect(input).toHaveValue('audio'))
+    await waitFor(
+      () =>
+        expect(
+          mockedSearchProducts.mock.calls.some(([filters]) => filters.search === 'audio'),
+        ).toBe(true),
+      { timeout: 2000 },
+    )
+
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(input).toHaveValue('audio')
+    const lastSearch = mockedSearchProducts.mock.calls.at(-1)?.[0].search
+    expect(lastSearch).toBe('audio')
   })
 
   it('sin filtros muestra el catálogo completo de la primera página', async () => {

@@ -56,6 +56,17 @@ Variables principales:
 | `ADMIN_EMAIL` | Correo del administrador inicial (solo para el script) | `admin@galeria.local` |
 | `ADMIN_PASSWORD` | Contraseña del administrador inicial (solo para el script) | `change-me-admin` |
 | `ADMIN_FULL_NAME` | Nombre completo del administrador inicial | `Administrador` |
+| `GROQ_API_KEY` | Clave de Groq usada por el asistente (solo backend) | — |
+| `GROQ_MODEL` | Modelo de chat fijo; vacío lo elige automáticamente | — |
+| `GROQ_MODEL_PREFERENCES` | Modelos preferidos, separados por comas y en orden | `openai/gpt-oss-120b,openai/gpt-oss-20b,qwen/qwen3.8-27b` |
+| `ASSISTANT_TOP_K` | Fragmentos de conocimiento recuperados por consulta | `5` |
+| `ASSISTANT_MAX_MESSAGE_CHARS` | Longitud máxima de un mensaje | `1000` |
+| `ASSISTANT_MAX_HISTORY_MESSAGES` | Mensajes de historial considerados | `10` |
+| `ASSISTANT_RATE_LIMIT` | Consultas permitidas por IP y ventana | `20` |
+| `ASSISTANT_RATE_WINDOW_SECONDS` | Duración de la ventana de rate limit | `300` |
+| `ASSISTANT_TIMEOUT_SECONDS` | Tiempo máximo de espera del proveedor | `20` |
+| `CHROMA_PATH` | Directorio persistente de ChromaDB | `/data/chroma` |
+| `HF_HOME` | Caché del modelo de embeddings | `/data/hf` |
 | `FRONTEND_PORT` | Puerto del frontend | `5173` |
 | `VITE_API_URL` | URL base de la API usada por el frontend | `http://localhost:8000/api` |
 
@@ -226,6 +237,46 @@ Las rutas `/api/public/*` no requieren autenticación. Solo exponen productos di
 - `GET /api/public/products/{id}` devuelve el detalle de un producto disponible: `id`, `name`, `description`, `price`, `offer_price`, `effective_price`, `categories`, `images` y `store`. Cada imagen incluye `id`, `url`, `alt_text`, `position` e `is_primary`, ordenadas por `position` y luego `id`. El local incluye `id`, `number`, `name`, `logo_url`, `email`, `phone` y `whatsapp` (los opcionales pueden ser `null`). No expone `store_id`, `is_active`, `deleted_at`, cuentas ni credenciales.
 - `GET /api/public/products/{id}/similar` devuelve `{items}` con hasta seis productos disponibles similares, usando el mismo esquema que la búsqueda (`primary_image` y `store` resumido). Se priorizan las categorías compartidas, luego las palabras del nombre (secuencias de letras de al menos 3 caracteres) y el nombre; el producto consultado nunca aparece.
 - Producto inexistente, eliminado, inactivo o de local inactivo responde `404` en ambos endpoints; un identificador no numérico responde `422`.
+
+## Asistente virtual
+
+`POST /api/public/assistant/chat` es público y no requiere autenticación. Responde consultas informativas en español sobre la galería, sus locales, sus categorías y el uso de la aplicación. No busca productos, precios ni stock: cuando la consulta lo requiere ofrece abrir el buscador o el mapa, pero nunca ejecuta la búsqueda.
+
+```json
+{
+  "message": "¿Cómo encuentro un local?",
+  "history": [
+    {"role": "user", "content": "Hola"},
+    {"role": "assistant", "content": "¡Hola! ¿En qué puedo ayudarte?"}
+  ]
+}
+```
+
+Respuesta:
+
+```json
+{
+  "answer": "Puedes consultar la lista de locales o abrir el mapa de la galería.",
+  "action": null,
+  "sources": [{"title": "Guía de la galería", "type": "static"}]
+}
+```
+
+- `action` es `null` o `{type: "search"|"map", label, query, href}`. El frontend muestra un botón y navega solo cuando el visitante lo confirma.
+- Límites: mensaje de 1–1000 caracteres, historial de hasta 10 mensajes, 20 consultas por IP cada 300 segundos y 20 segundos de espera del proveedor. Un mensaje u historial inválido responde `422`, el rate limit `429` y un proveedor no disponible `503`.
+- El rate limit es en memoria por proceso: no es distribuido y se reinicia al reiniciar el backend.
+- No se persisten conversaciones ni se registran analíticas del asistente.
+
+La base de conocimiento combina `app/modules/assistant/knowledge/galeria.md` con un documento por local activo (datos públicos y categorías comerciales, sin productos ni precios). Se usa Groq para el chat y embeddings multilingües locales (`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`) con ChromaDB persistente en `chroma_data`.
+
+La primera ejecución descarga el modelo de embeddings y puede tardar varios minutos. Para construir o reconstruir el índice:
+
+```bash
+docker compose exec backend python -m scripts.reindex_assistant
+docker compose exec backend python -m scripts.reindex_assistant --store-id 5
+```
+
+Guardar el local desde el panel del comerciante (CU #9) reindexa ese local en segundo plano; un fallo de indexación se registra y nunca revierte el guardado. El CLI sigue siendo la vía para reconstruir todo el índice.
 
 ## Pruebas
 

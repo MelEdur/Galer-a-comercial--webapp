@@ -1,6 +1,6 @@
 """HTTP endpoints for the authenticated merchant's own store settings."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -48,11 +48,19 @@ def get_store(
 )
 def put_store(
     payload: StoreUpdate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(require_merchant),
     db: Session = Depends(get_db),
 ) -> StoreRead:
-    """Replace the editable store data, hours and links."""
+    """Replace the editable store data and refresh its assistant document."""
     try:
-        return service.update_store(db, current_user.store_id, payload)
+        store = service.update_store(db, current_user.store_id, payload)
     except service.StoreNotFoundError:
         raise _not_found() from None
+
+    # Imported here to keep the assistant module out of the store module's
+    # import graph. The task is best-effort: failures never undo the save.
+    from app.modules.assistant.indexing import reindex_store_safely
+
+    background_tasks.add_task(reindex_store_safely, current_user.store_id)
+    return store
