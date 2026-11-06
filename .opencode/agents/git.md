@@ -1,4 +1,3 @@
-
 ---
 description: Specialized agent responsible for Git operations, repository management, commits, and branch organization.
 mode: subagent
