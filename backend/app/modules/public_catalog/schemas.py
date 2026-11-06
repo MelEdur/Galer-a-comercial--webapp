@@ -154,6 +154,30 @@ class PublicStoreLink(BaseModel):
     position: int
 
 
+class MapStore(BaseModel):
+    """A store as placed on the public gallery map.
+
+    Only the location and identifying data a visitor needs are exposed;
+    internal columns such as ``is_active`` and any related products or accounts
+    are never included.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    number: int
+    name: str
+    logo_url: str | None
+    side: str
+    position: int
+
+
+class MapResponse(BaseModel):
+    """The public gallery map: every active store with its location."""
+
+    stores: list[MapStore]
+
+
 class PublicStoreProfile(BaseModel):
     """The public profile of an available store.
 

@@ -16,6 +16,7 @@ import { StoreSettingsPage } from '../features/merchant-store/StoreSettingsPage'
 import { StoreDetailPage } from '../features/store-detail/StoreDetailPage'
 import { ExplorePage } from '../features/explore/ExplorePage'
 import { StoreListPage } from '../features/explore/StoreListPage'
+import { StoreMapPage } from '../features/store-map/StoreMapPage'
 
 export function AppRoutes(): ReactElement {
   return (
@@ -26,6 +27,7 @@ export function AppRoutes(): ReactElement {
       <Route path="/productos/:productId" element={<ProductDetailPage />} />
       <Route path="/locales" element={<StoreListPage />} />
       <Route path="/locales/:storeId" element={<StoreDetailPage />} />
+      <Route path="/mapa" element={<StoreMapPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/admin"

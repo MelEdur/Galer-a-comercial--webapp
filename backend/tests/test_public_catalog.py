@@ -1624,3 +1624,124 @@ def test_explore_does_not_record_search_events(
 
     assert response.status_code == 200
     assert _event_count(db_session) == 0
+
+
+# --- Gallery map (CU #5) ---------------------------------------------------
+
+MAP_URL = "/api/public/map"
+
+
+def test_map_without_token_returns_expected_contract(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    store.logo_url = "https://example.com/logo.png"
+    db_session.commit()
+
+    response = api_client.get(MAP_URL)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"stores"}
+    assert body["stores"] == [
+        {
+            "id": store.id,
+            "number": 1,
+            "name": "Local 1",
+            "logo_url": "https://example.com/logo.png",
+            "side": "right",
+            "position": 1,
+        }
+    ]
+    item = body["stores"][0]
+    assert set(item) == {
+        "id",
+        "number",
+        "name",
+        "logo_url",
+        "side",
+        "position",
+    }
+
+
+def test_map_only_includes_active_stores(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+    other_store: Store,
+    inactive_store: Store,
+) -> None:
+    response = api_client.get(MAP_URL)
+
+    assert response.status_code == 200
+    stores = response.json()["stores"]
+    returned_ids = {item["id"] for item in stores}
+    assert returned_ids == {store.id, other_store.id}
+    assert inactive_store.id not in returned_ids
+
+
+def test_map_orders_by_side_then_position(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    # The ``store`` fixture is right/1 with number 1; create the rest.
+    db_session.add_all(
+        [
+            Store(number=10, name="Izquierda 2", side="left", position=2),
+            Store(number=11, name="Izquierda 1", side="left", position=1),
+            Store(number=12, name="Fondo", side="back", position=1),
+            Store(number=13, name="Derecha 2", side="right", position=2),
+        ]
+    )
+    db_session.commit()
+
+    response = api_client.get(MAP_URL)
+
+    assert response.status_code == 200
+    assert [
+        (item["side"], item["position"]) for item in response.json()["stores"]
+    ] == [
+        ("left", 1),
+        ("left", 2),
+        ("right", 1),
+        ("right", 2),
+        ("back", 1),
+    ]
+
+
+def test_map_does_not_expose_internal_data_or_products(
+    api_client: TestClient,
+    db_session: Session,
+    store: Store,
+) -> None:
+    store.email = "local@galeria.local"
+    store.phone = "1122334455"
+    store.whatsapp = "1122334455"
+    store.description = "Descripción interna"
+    db_session.commit()
+    _add_product(db_session, store, name="Remera", price="100.00")
+
+    response = api_client.get(MAP_URL)
+
+    assert response.status_code == 200
+    item = response.json()["stores"][0]
+    assert set(item) == {
+        "id",
+        "number",
+        "name",
+        "logo_url",
+        "side",
+        "position",
+    }
+    assert "is_active" not in item
+    assert "description" not in item
+    assert "email" not in item
+    assert "phone" not in item
+    assert "whatsapp" not in item
+    lowered = response.text.lower()
+    assert "products" not in lowered
+    assert "accounts" not in lowered
+    assert "merchants" not in lowered
+    assert "password" not in lowered

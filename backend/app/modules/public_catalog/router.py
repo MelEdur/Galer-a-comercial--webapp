@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.modules.public_catalog.schemas import (
     ExploreResponse,
     ExploreStore,
+    MapResponse,
     PaginatedPublicProducts,
     PublicCategory,
     PublicProductDetail,
@@ -21,6 +22,7 @@ from app.modules.public_catalog.service import (
     ProductNotFoundError,
     StoreNotFoundError,
     get_product_detail,
+    get_store_map,
     get_store_profile,
     list_categories,
     list_explore,
@@ -101,6 +103,16 @@ def get_public_explore(db: Session = Depends(get_db)) -> ExploreResponse:
 def get_public_stores(db: Session = Depends(get_db)) -> list[ExploreStore]:
     """Return every active store ordered by number, without pagination."""
     return list_public_stores(db)
+
+
+@router.get(
+    "/map",
+    response_model=MapResponse,
+    summary="Get the public gallery map",
+)
+def get_public_map(db: Session = Depends(get_db)) -> MapResponse:
+    """Return every active store with its location, without pagination."""
+    return get_store_map(db)
 
 
 @router.get(

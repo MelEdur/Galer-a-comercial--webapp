@@ -9,7 +9,7 @@ import logging
 import re
 from decimal import Decimal
 
-from sqlalchemy import exists, func, insert, or_, select
+from sqlalchemy import case, exists, func, insert, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
@@ -19,6 +19,8 @@ from app.modules.public_catalog.schemas import (
     ExploreCategory,
     ExploreResponse,
     ExploreStore,
+    MapResponse,
+    MapStore,
     PaginatedPublicProducts,
     PublicCategory,
     PublicImage,
@@ -556,3 +558,28 @@ def list_explore(session: Session) -> ExploreResponse:
 def list_public_stores(session: Session) -> list[ExploreStore]:
     """Return every active store ordered by number."""
     return _explore_stores(session)
+
+
+# The gallery map orders sides left, right, back before their positions.
+_SIDE_ORDER = case(
+    (Store.side == "left", 0),
+    (Store.side == "right", 1),
+    else_=2,
+)
+
+
+def get_store_map(session: Session) -> MapResponse:
+    """Return the public gallery map with every active store.
+
+    Stores are ordered by side (``left``, ``right``, ``back``) and then by
+    ascending position, so the frontend can lay out the schematic floor plan
+    without inventing coordinates.
+    """
+    stores = session.scalars(
+        select(Store)
+        .where(Store.is_active.is_(True))
+        .order_by(_SIDE_ORDER, Store.position, Store.id)
+    ).all()
+    return MapResponse(
+        stores=[MapStore.model_validate(store) for store in stores]
+    )
