@@ -214,9 +214,20 @@ Responsible for:
 - Git branches and repository management.
 - Reviewing changes before commits.
 - Creating commits.
+- Pushing archived changes to `origin`.
 - Managing merges and resolving Git conflicts.
 
 All Git operations should be delegated to this agent.
+
+#### Publicación después de archivar
+
+Cuando un cambio OpenSpec se archiva y el usuario aprueba el cierre:
+
+- Delegar al Git Agent la revisión final, el commit y el push a `origin`.
+- Publicar en la rama actual; no crear ni cambiar de rama salvo pedido explícito.
+- Usar Conventional Commits y excluir cambios ajenos al cambio archivado.
+- Verificar con el MCP de GitHub que el commit y la rama remota existen.
+- No usar `push_files` ni `create_or_update_file` del MCP para reemplazar el push de la historia local, salvo pedido explícito.
 
 ## 9. Delegation and Collaboration
 
@@ -241,6 +252,7 @@ The Build agent must not assume that delegation guarantees successful integratio
 - Never perform destructive Git operations without explicit approval.
 - Do not commit unrelated changes.
 - Do not commit automatically after every implementation task.
+- After archiving an OpenSpec change, delegate the commit and push to the Git Agent, then verify the remote commit with the GitHub MCP.
 - Ask for approval when an operation could discard work or rewrite shared history.
 
 ## 11. Definition of Done
