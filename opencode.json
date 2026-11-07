@@ -9,6 +9,15 @@
         "headers": {
           "Authorization": "Bearer {file:~/.config/opencode/github-mcp-token}"
         }
+      },
+      "filesystem": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@modelcontextprotocol/server-filesystem",
+          "/home/edume/proyect/test"
+        ]
       }
     }
   }
